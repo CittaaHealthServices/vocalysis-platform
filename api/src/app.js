@@ -4,7 +4,6 @@ const cors = require('cors');
 const morgan = require('morgan');
 const { v4: uuidv4 } = require('uuid');
 const swaggerUi = require('swagger-ui-express');
-const Board = require('bull-board');
 const logger = require('./utils/logger');
 const { requireAuth, requireRole } = require('./middleware/auth');
 
