@@ -1,0 +1,129 @@
+VocaCore Service Module Structure
+==================================
+
+ENTRY POINT: app.py
+  - Flask application factory: create_app()
+  - Three endpoints: /health, /extract, /fallback
+  - Authentication decorator: require_internal_auth()
+  - Error handlers for 400/500 responses
+
+IMPORTS:
+  from quality_check import QualityChecker
+  from extractor import FeatureExtractor
+  from fallback_scorer import DeterministicScorer
+
+MODULE: quality_check.py (QualityChecker class)
+  Responsibilities:
+  - MIME type detection (WAV/MP3)
+  - Audio format conversion
+  - Resampling to 16kHz mono
+  - SNR estimation
+  - Voiced fraction detection
+  - Quality scoring
+
+  Public API:
+  - check(audio_bytes, filename) -> dict
+
+MODULE: extractor.py (FeatureExtractor class)
+  Responsibilities:
+  - F0 extraction (parselmouth)
+  - Prosody analysis (speech rate, pauses, rhythm)
+  - Voice quality metrics (jitter, shimmer, HNR, formants)
+  - MFCC feature extraction
+  - Spectral analysis
+
+  Public API:
+  - extract(audio_array, sample_rate) -> dict (50+ features)
+
+  Internal Methods (safe with exception handling):
+  - _extract_f0_features()
+  - _extract_speech_rate()
+  - _extract_articulation_rate()
+  - _extract_pause_features()
+  - _extract_energy_features()
+  - _extract_rhythm_features()
+  - _extract_spectral_features()
+  - _extract_loudness_contour()
+  - _extract_voiced_fraction()
+  - _extract_jitter_shimmer()
+  - _extract_hnr()
+  - _extract_gne()
+  - _extract_vti_spi()
+  - _extract_formants()
+  - _extract_mfcc_features()
+
+MODULE: fallback_scorer.py (DeterministicScorer class)
+  Responsibilities:
+  - Rule-based psychological state scoring
+  - Clinical threshold application
+  - Confidence estimation
+
+  Public API:
+  - score(features_dict) -> dict (4 scores + confidence)
+
+  Internal Methods:
+  - _score_depression_indicators()
+  - _score_anxiety_indicators()
+  - _score_stress_indicators()
+  - _score_emotional_stability()
+
+CONFIGURATION:
+  requirements.txt
+  - Flask, Gunicorn, librosa, numpy, scipy
+  - soundfile, pydub, parselmouth, python-dotenv
+
+  Dockerfile
+  - Python 3.11 slim base
+  - System dependencies: libsndfile1, ffmpeg
+  - Gunicorn with 4 workers, 4 threads each
+  - Dynamic PORT binding
+
+DEPLOYMENT:
+  Environment Variables:
+  - VOCOCORE_INTERNAL_KEY: API authentication key
+  - PORT: Binding port for gunicorn (optional)
+
+REQUEST FLOW:
+  POST /extract
+    1. Authenticate via X-VocoCore-Internal-Key
+    2. Read audio file from multipart/form-data
+    3. QualityChecker.check() -> validate & preprocess
+    4. FeatureExtractor.extract() -> 50+ features
+    5. Clear audio from memory
+    6. Return JSON with features + metadata
+
+  POST /fallback
+    1. Same as /extract through step 4
+    2. DeterministicScorer.score() -> 4 psychological scores
+    3. Add is_fallback flag to metadata
+    4. Return JSON with features + scores + metadata
+
+ERROR HANDLING:
+  - 400 Bad Request: Missing/invalid audio
+  - 401 Unauthorized: Invalid authentication key
+  - 500 Internal Error: Processing failures
+  - No logging of audio content or feature values
+  - All exceptions caught and logged safely
+
+SAFETY FEATURES:
+  - Memory cleanup after extraction
+  - File size limits (50 MB)
+  - Timeout handling (120 seconds per request)
+  - No persistent audio storage
+  - Graceful parselmouth failure handling
+  - Comprehensive exception handling throughout
+
+TESTING ENDPOINTS:
+  GET /health
+    Returns: { status: "ok", version: "2.0" }
+    No authentication required
+
+  POST /extract
+    Requires: X-VocoCore-Internal-Key header
+    Input: multipart/form-data with 'audio' field
+    Returns: { success: true, features: {...}, meta: {...} }
+
+  POST /fallback
+    Requires: X-VocoCore-Internal-Key header
+    Input: multipart/form-data with 'audio' field
+    Returns: { success: true, features: {...}, fallback_scores: {...}, meta: {...} }
