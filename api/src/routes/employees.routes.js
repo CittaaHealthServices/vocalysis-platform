@@ -10,7 +10,7 @@ const logger = require('../utils/logger');
 const auditService = require('../services/auditService');
 const emailService = require('../services/emailService');
 const Bull = require('bull');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 
 const upload = multer({ storage: multer.memoryStorage() });

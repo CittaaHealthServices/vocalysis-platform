@@ -1,11 +1,11 @@
 const rateLimit = require('express-rate-limit');
-const RedisStore = require('rate-limit-redis');
+const { RedisStore } = require('rate-limit-redis');
 const redis = require('../config/redis');
 const logger = require('../config/logger');
 
 const globalRateLimiter = rateLimit({
   store: new RedisStore({
-    client: redis,
+    sendCommand: (...args) => redis.call(...args),
     prefix: 'rate_limit:global:',
   }),
   windowMs: 15 * 60 * 1000,
@@ -37,7 +37,7 @@ const globalRateLimiter = rateLimit({
 
 const authRateLimiter = rateLimit({
   store: new RedisStore({
-    client: redis,
+    sendCommand: (...args) => redis.call(...args),
     prefix: 'rate_limit:auth:',
   }),
   windowMs: 15 * 60 * 1000,
@@ -65,7 +65,7 @@ const authRateLimiter = rateLimit({
 
 const uploadRateLimiter = rateLimit({
   store: new RedisStore({
-    client: redis,
+    sendCommand: (...args) => redis.call(...args),
     prefix: 'rate_limit:upload:',
   }),
   windowMs: 60 * 1000,
@@ -99,7 +99,7 @@ const uploadRateLimiter = rateLimit({
 
 const apiKeyRateLimiter = rateLimit({
   store: new RedisStore({
-    client: redis,
+    sendCommand: (...args) => redis.call(...args),
     prefix: 'rate_limit:apikey:',
   }),
   windowMs: (req) => 60 * 1000,

@@ -5,7 +5,7 @@ const User = require('../models/User');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const logger = require('../utils/logger');
 const auditService = require('../services/auditService');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const emailService = require('../services/emailService');
 

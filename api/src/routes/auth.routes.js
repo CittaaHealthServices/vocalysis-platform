@@ -3,7 +3,7 @@ const router = express.Router();
 const User = require('../models/User');
 const Tenant = require('../models/Tenant');
 const jwt = require('jsonwebtoken');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const otplib = require('otplib');
@@ -660,7 +660,7 @@ router.get('/auth/google/callback', async (req, res) => {
 /**
  * Helper: Validate password complexity
  */
-_isValidPassword(password) {
+function _isValidPassword(password) {
   if (password.length < 10) return false;
   if (!/[A-Z]/.test(password)) return false;
   if (!/[a-z]/.test(password)) return false;
