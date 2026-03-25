@@ -1,0 +1,6 @@
+[build]
+  builder = "NIXPACKS"
+
+[deploy]
+  startCommand = "node src/worker.js"
+  restartPolicyType = "ALWAYS"

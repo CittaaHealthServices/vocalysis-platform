@@ -1,0 +1,41 @@
+{
+  "name": "vocalysis-api",
+  "version": "2.0.0",
+  "description": "Vocalysis API — Cittaa Health Services",
+  "main": "src/server.js",
+  "scripts": {
+    "start:prod": "node src/server.js",
+    "dev": "nodemon src/server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "mongoose": "^8.0.0",
+    "bcrypt": "^5.1.1",
+    "jsonwebtoken": "^9.0.2",
+    "express-validator": "^7.0.1",
+    "express-rate-limit": "^7.1.5",
+    "rate-limit-redis": "^4.2.0",
+    "helmet": "^7.1.0",
+    "cors": "^2.8.5",
+    "multer": "^1.4.5-lts.1",
+    "ioredis": "^5.3.2",
+    "bull": "^4.12.2",
+    "uuid": "^9.0.1",
+    "crypto": "^1.0.1",
+    "otplib": "^12.0.1",
+    "qrcode": "^1.5.3",
+    "nodemailer": "^6.9.8",
+    "pdfkit": "^0.14.0",
+    "axios": "^1.6.5",
+    "form-data": "^4.0.0",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.0",
+    "dotenv": "^16.3.1",
+    "winston": "^3.11.0",
+    "morgan": "^1.10.0",
+    "file-type": "^19.0.0",
+    "googleapis": "^140.0.0",
+    "@bull-board/api": "^5.10.2",
+    "@bull-board/express": "^5.10.2"
+  }
+}

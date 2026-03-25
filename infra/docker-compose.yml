@@ -1,0 +1,50 @@
+version: '3.9'
+services:
+  mongodb:
+    image: mongo:7.0
+    ports: ["27017:27017"]
+    volumes: [mongodb_data:/data/db]
+    environment:
+      MONGO_INITDB_DATABASE: vocalysis
+
+  redis:
+    image: redis:7.2-alpine
+    ports: ["6379:6379"]
+    volumes: [redis_data:/data]
+
+  vococore:
+    build: ../vococore
+    ports: ["5001:5001"]
+    environment:
+      PORT: 5001
+      VOCOCORE_INTERNAL_KEY: ${VOCOCORE_INTERNAL_KEY}
+    env_file: ../vococore/.env
+
+  api:
+    build: ../api
+    ports: ["3001:3001"]
+    depends_on: [mongodb, redis, vococore]
+    env_file: ../api/.env
+    volumes: [api_storage:/app/storage]
+
+  worker:
+    build: ../worker
+    depends_on: [mongodb, redis, vococore]
+    env_file: ../worker/.env
+    volumes: [api_storage:/app/storage]
+
+  healthcheck:
+    build: ../healthcheck
+    ports: ["4000:4000"]
+    depends_on: [mongodb, redis, api]
+    env_file: ../healthcheck/.env
+
+  web:
+    build: ../web
+    ports: ["5173:80"]
+    depends_on: [api]
+
+volumes:
+  mongodb_data:
+  redis_data:
+  api_storage:
