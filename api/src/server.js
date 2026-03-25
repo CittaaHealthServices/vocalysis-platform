@@ -5,7 +5,7 @@ const logger = require('./utils/logger');
 const mongoose = require('mongoose');
 const redis = require('./utils/redis');
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 8080;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
 let server;
@@ -23,7 +23,7 @@ async function connectMongoDB() {
     logger.info('Connected to MongoDB');
   } catch (err) {
     logger.error('Failed to connect to MongoDB', { error: err.message });
-    process.exit(1);
+    // Do not exit — allow server to keep running so /health stays responsive
   }
 }
 
@@ -36,7 +36,7 @@ async function verifyRedis() {
     logger.info('Connected to Redis');
   } catch (err) {
     logger.error('Failed to connect to Redis', { error: err.message });
-    process.exit(1);
+    // Do not exit — allow server to keep running so /health stays responsive
   }
 }
 
@@ -85,56 +85,54 @@ async function gracefulShutdown(signal) {
  * Start server
  */
 async function startServer() {
-  try {
-    // Connect to databases
-    await connectMongoDB();
-    await verifyRedis();
+  // Create and start HTTP server immediately so /health responds right away
+  server = http.createServer(app);
 
-    // Create HTTP server
-    server = http.createServer(app);
-
-    server.listen(PORT, () => {
-      logger.info(`Vocalysis Platform API Server listening on port ${PORT}`, {
-        environment: NODE_ENV,
-        nodeVersion: process.version
-      });
+  server.listen(PORT, () => {
+    logger.info(`Vocalysis Platform API Server listening on port ${PORT}`, {
+      environment: NODE_ENV,
+      nodeVersion: process.version
     });
+  });
 
-    // Handle server errors
-    server.on('error', (err) => {
-      if (err.code === 'EADDRINUSE') {
-        logger.error(`Port ${PORT} is already in use`);
-      } else {
-        logger.error('Server error', { error: err.message });
-      }
-      process.exit(1);
-    });
-
-    // Handle unhandled rejections
-    process.on('unhandledRejection', (reason, promise) => {
-      logger.error('Unhandled Rejection at:', {
-        promise,
-        reason: String(reason)
-      });
-    });
-
-    // Handle uncaught exceptions
-    process.on('uncaughtException', (err) => {
-      logger.error('Uncaught Exception', {
-        error: err.message,
-        stack: err.stack
-      });
-      gracefulShutdown('UNCAUGHT_EXCEPTION');
-    });
-
-    // Graceful shutdown handlers
-    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-
-  } catch (err) {
-    logger.error('Failed to start server', { error: err.message });
+  // Handle server errors
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      logger.error(`Port ${PORT} is already in use`);
+    } else {
+      logger.error('Server error', { error: err.message });
+    }
     process.exit(1);
-  }
+  });
+
+  // Handle unhandled rejections
+  process.on('unhandledRejection', (reason, promise) => {
+    logger.error('Unhandled Rejection at:', {
+      promise,
+      reason: String(reason)
+    });
+  });
+
+  // Handle uncaught exceptions
+  process.on('uncaughtException', (err) => {
+    logger.error('Uncaught Exception', {
+      error: err.message,
+      stack: err.stack
+    });
+    gracefulShutdown('UNCAUGHT_EXCEPTION');
+  });
+
+  // Graceful shutdown handlers
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+  // Connect to databases in the background (after HTTP server is up)
+  connectMongoDB().catch((err) => {
+    logger.error('Background MongoDB connection failed', { error: err.message });
+  });
+  verifyRedis().catch((err) => {
+    logger.error('Background Redis connection failed', { error: err.message });
+  });
 }
 
 // Start the server
