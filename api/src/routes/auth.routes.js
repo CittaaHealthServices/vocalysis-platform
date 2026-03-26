@@ -544,7 +544,22 @@ router.post('/mfa/verify', requireAuth, async (req, res) => {
 /* ─────────────────────────────────────────────────────────────────────────── */
 
 /**
+ * GET /auth/google/login
+ * Initiate Google Sign-In (public — no auth required)
+ */
+router.get('/google/login', (req, res) => {
+  try {
+    const url = googleService.getLoginUrl();
+    res.json({ success: true, data: { url } });
+  } catch (err) {
+    logger.error('Google login URL generation failed', { error: err.message });
+    res.status(500).json({ success: false, message: 'Failed to generate Google login URL' });
+  }
+});
+
+/**
  * GET /auth/google
+ * Connect Google Calendar (authenticated — from settings page)
  */
 router.get('/google', requireAuth, (req, res) => {
   try {
@@ -558,18 +573,104 @@ router.get('/google', requireAuth, (req, res) => {
 
 /**
  * GET /auth/google/callback
+ * Handles both Google Sign-In (purpose=login) and Calendar Connect (purpose=connect)
  */
 router.get('/google/callback', async (req, res) => {
   const platformUrl = process.env.PLATFORM_URL || 'https://striking-bravery-production-c13e.up.railway.app';
   try {
-    const { code, state } = req.query;
-    if (!code || !state) {
-      return res.redirect(`${platformUrl}/settings/integrations?google=failed&error=missing_params`);
+    const { code, state, error: oauthError } = req.query;
+
+    if (oauthError) {
+      return res.redirect(`${platformUrl}/login?google=cancelled`);
     }
 
-    const { userId, tenantId } = JSON.parse(Buffer.from(state, 'base64').toString());
+    if (!code || !state) {
+      return res.redirect(`${platformUrl}/login?google=failed&error=missing_params`);
+    }
+
+    const stateData = JSON.parse(Buffer.from(state, 'base64').toString());
     const tokens = await googleService.exchangeCode(code);
 
+    // ── GOOGLE SIGN-IN flow ──────────────────────────────────────────────
+    if (stateData.purpose === 'login') {
+      const profile = await googleService.getGoogleProfile(tokens.access_token);
+      const email   = profile.email?.toLowerCase();
+
+      if (!email) {
+        return res.redirect(`${platformUrl}/login?google=failed&error=no_email`);
+      }
+
+      // Find existing user by email
+      const user = await User.findOne({ email }).select('+passwordHash');
+      if (!user) {
+        // Not registered — check if any tenant allows this domain
+        const domain = email.split('@')[1];
+        const matchingTenant = await Tenant.findOne({
+          'settings.allowedEmailDomains': domain,
+          status: 'active',
+        });
+
+        if (!matchingTenant) {
+          return res.redirect(`${platformUrl}/login?google=failed&error=domain_not_allowed`);
+        }
+
+        // Domain is allowed but user not created yet — redirect to notify
+        return res.redirect(`${platformUrl}/login?google=failed&error=not_registered`);
+      }
+
+      if (!user.isActive) {
+        return res.redirect(`${platformUrl}/login?google=failed&error=account_inactive`);
+      }
+
+      // Issue tokens
+      const jti = uuidv4();
+      const accessToken = jwt.sign(
+        { userId: user.userId, email: user.email, role: user.role, tenantId: user.tenantId, jti },
+        JWT_ACCESS_SECRET,
+        { expiresIn: ACCESS_TOKEN_EXPIRY }
+      );
+      const refreshToken = jwt.sign(
+        { userId: user.userId, tenantId: user.tenantId, jti: uuidv4() },
+        JWT_REFRESH_SECRET,
+        { expiresIn: REFRESH_TOKEN_EXPIRY }
+      );
+
+      // Set cookie
+      res.cookie('refreshToken', refreshToken, {
+        httpOnly: true,
+        secure:   process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        maxAge:   7 * 24 * 60 * 60 * 1000,
+      });
+
+      // Update user's Google profile info
+      user.lastLoginAt = new Date();
+      await user.save();
+
+      await auditService.log({
+        userId: user._id, tenantId: user.tenantId, role: user.role,
+        action: 'LOGIN_SUCCESS', targetResource: 'User', targetId: user._id,
+        ipAddress: req.ip, userAgent: req.get('user-agent'), requestId: req.requestId,
+        changeSnapshot: { method: 'google_oauth' }
+      }).catch(() => {});
+
+      // Redirect with access token in URL fragment (frontend reads it)
+      const roleRedirects = {
+        CITTAA_SUPER_ADMIN:    '/cittaa-admin',
+        CITTAA_CEO:            '/ceo',
+        COMPANY_ADMIN:         '/company',
+        HR_ADMIN:              '/hr',
+        SENIOR_CLINICIAN:      '/clinical',
+        CLINICAL_PSYCHOLOGIST: '/clinical',
+        EAP_PROVIDER:          '/eap',
+        EMPLOYEE:              '/my',
+      };
+      const destination = roleRedirects[user.role] || '/login';
+      return res.redirect(`${platformUrl}/auth/callback?token=${accessToken}&dest=${encodeURIComponent(destination)}`);
+    }
+
+    // ── CALENDAR CONNECT flow ────────────────────────────────────────────
+    const { userId, tenantId } = stateData;
     const user = await User.findOneAndUpdate(
       { userId },
       {
@@ -592,7 +693,7 @@ router.get('/google/callback', async (req, res) => {
     res.redirect(`${platformUrl}/settings/integrations?google=connected`);
   } catch (err) {
     logger.error('Google OAuth callback failed', { error: err.message });
-    res.redirect(`${platformUrl}/settings/integrations?google=failed&error=${encodeURIComponent(err.message)}`);
+    res.redirect(`${platformUrl}/login?google=failed&error=${encodeURIComponent(err.message)}`);
   }
 });
 

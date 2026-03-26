@@ -56,17 +56,25 @@ import HealthMonitor from '../pages/cittaa-admin/HealthMonitor'
 import AuditLog from '../pages/cittaa-admin/AuditLog'
 import ErrorLog from '../pages/cittaa-admin/ErrorLog'
 
+// CEO Pages
+import CEODashboard from '../pages/ceo/CEODashboard'
+
+// EAP Pages
+import EAPDashboard from '../pages/eap/EAPDashboard'
+
 // Error Pages
 import NotFound from '../pages/errors/NotFound'
 import Unauthorized from '../pages/errors/Unauthorized'
 
 const ROLES = {
-  CITTAA_SUPER_ADMIN: 'CITTAA_SUPER_ADMIN',
-  COMPANY_ADMIN: 'COMPANY_ADMIN',
-  HR_ADMIN: 'HR_ADMIN',
-  SENIOR_CLINICIAN: 'SENIOR_CLINICIAN',
+  CITTAA_SUPER_ADMIN:    'CITTAA_SUPER_ADMIN',
+  CITTAA_CEO:            'CITTAA_CEO',
+  COMPANY_ADMIN:         'COMPANY_ADMIN',
+  HR_ADMIN:              'HR_ADMIN',
+  SENIOR_CLINICIAN:      'SENIOR_CLINICIAN',
   CLINICAL_PSYCHOLOGIST: 'CLINICAL_PSYCHOLOGIST',
-  EMPLOYEE: 'EMPLOYEE',
+  EAP_PROVIDER:          'EAP_PROVIDER',
+  EMPLOYEE:              'EMPLOYEE',
 }
 
 const router = createBrowserRouter([
@@ -244,6 +252,32 @@ const router = createBrowserRouter([
     ],
   },
 
+  // CEO Routes
+  {
+    path: '/ceo',
+    element: (
+      <ProtectedRoute requiredRoles={[ROLES.CITTAA_CEO]}>
+        <AppLayout />
+      </ProtectedRoute>
+    ),
+    children: [
+      { index: true, element: <CEODashboard /> },
+    ],
+  },
+
+  // EAP Provider Routes
+  {
+    path: '/eap',
+    element: (
+      <ProtectedRoute requiredRoles={[ROLES.EAP_PROVIDER]}>
+        <AppLayout />
+      </ProtectedRoute>
+    ),
+    children: [
+      { index: true, element: <EAPDashboard /> },
+    ],
+  },
+
   // Cittaa Admin Routes
   {
     path: '/cittaa-admin',
@@ -320,6 +354,8 @@ function RootRedirect() {
   switch (user.role) {
     case ROLES.CITTAA_SUPER_ADMIN:
       return <Navigate to="/cittaa-admin" replace />
+    case ROLES.CITTAA_CEO:
+      return <Navigate to="/ceo" replace />
     case ROLES.COMPANY_ADMIN:
       return <Navigate to="/company" replace />
     case ROLES.HR_ADMIN:
@@ -327,6 +363,8 @@ function RootRedirect() {
     case ROLES.SENIOR_CLINICIAN:
     case ROLES.CLINICAL_PSYCHOLOGIST:
       return <Navigate to="/clinical" replace />
+    case ROLES.EAP_PROVIDER:
+      return <Navigate to="/eap" replace />
     case ROLES.EMPLOYEE:
       return <Navigate to="/my" replace />
     default:

@@ -35,10 +35,47 @@ class GoogleService {
   }
 
   /**
-   * Generate OAuth URL for connecting Google account (includes state)
+   * Generate OAuth URL for Google Sign-In (login / registration)
+   */
+  getLoginUrl() {
+    const state = Buffer.from(JSON.stringify({ purpose: 'login', ts: Date.now() })).toString('base64');
+    return this.oauth2Client.generateAuthUrl({
+      access_type: 'offline',
+      scope: [
+        'openid',
+        'https://www.googleapis.com/auth/userinfo.email',
+        'https://www.googleapis.com/auth/userinfo.profile',
+      ],
+      prompt: 'select_account',
+      state,
+    });
+  }
+
+  /**
+   * Get the Google user profile using an access token
+   */
+  async getGoogleProfile(accessToken) {
+    try {
+      const client = new google.auth.OAuth2(
+        process.env.GOOGLE_CLIENT_ID,
+        process.env.GOOGLE_CLIENT_SECRET,
+        process.env.GOOGLE_REDIRECT_URI
+      );
+      client.setCredentials({ access_token: accessToken });
+      const oauth2 = google.oauth2({ version: 'v2', auth: client });
+      const { data } = await oauth2.userinfo.get();
+      return data; // { id, email, name, given_name, family_name, picture }
+    } catch (err) {
+      logger.error('Failed to get Google profile', { error: err.message });
+      throw new Error('Failed to retrieve Google profile');
+    }
+  }
+
+  /**
+   * Generate OAuth URL for connecting Google Calendar (includes state)
    */
   getConnectUrl(userId, tenantId) {
-    const state = Buffer.from(JSON.stringify({ userId, tenantId })).toString('base64');
+    const state = Buffer.from(JSON.stringify({ userId, tenantId, purpose: 'connect' })).toString('base64');
     return this.oauth2Client.generateAuthUrl({
       access_type: 'offline',
       scope: [

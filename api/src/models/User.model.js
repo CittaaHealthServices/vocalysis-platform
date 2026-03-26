@@ -35,10 +35,12 @@ const userSchema = new mongoose.Schema(
       type: String,
       enum: [
         'CITTAA_SUPER_ADMIN',
+        'CITTAA_CEO',
         'COMPANY_ADMIN',
         'HR_ADMIN',
         'SENIOR_CLINICIAN',
         'CLINICAL_PSYCHOLOGIST',
+        'EAP_PROVIDER',
         'EMPLOYEE',
         'API_CLIENT',
       ],
