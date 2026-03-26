@@ -1,6 +1,6 @@
 {
   "name": "vocalysis-api",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "Vocalysis API — Cittaa Health Services",
   "main": "src/server.js",
   "scripts": {

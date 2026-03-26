@@ -1,12 +1,29 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApi } from '../../hooks/useApi'
 import { Card, CardTitle, Button, LoadingScreen } from '../../components/ui'
-import { Users, AlertCircle, Clock, FileText } from 'lucide-react'
+import { Users, AlertCircle, Clock, FileText, Video, Loader2 } from 'lucide-react'
 import { format } from 'date-fns'
 import api from '../../services/api'
+import toast from 'react-hot-toast'
 
 export const ClinicalDashboard = () => {
   const navigate = useNavigate()
+  const [startingMeet, setStartingMeet] = useState(false)
+
+  const handleInstantMeet = async () => {
+    setStartingMeet(true)
+    try {
+      const res = await api.post('/consultations/instant-meet')
+      const link = res.meetLink || res.data?.meetLink
+      window.open(link, '_blank', 'noopener,noreferrer')
+      toast.success('Instant Meet room opened!')
+    } catch {
+      toast.error('Could not create Meet room')
+    } finally {
+      setStartingMeet(false)
+    }
+  }
   const { data: stats, isLoading } = useApi(
     ['clinical', 'stats'],
     () => api.get('/clinical/stats')
@@ -89,6 +106,16 @@ export const ClinicalDashboard = () => {
         >
           New Assessment
         </Button>
+        <button
+          onClick={handleInstantMeet}
+          disabled={startingMeet}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white shadow-sm hover:shadow-md transition-all disabled:opacity-70 active:scale-[0.98]"
+          style={{ background: 'linear-gradient(135deg, #1a73e8, #1558b0)' }}
+        >
+          {startingMeet
+            ? <><Loader2 className="w-4 h-4 animate-spin" /> Starting…</>
+            : <><Video className="w-4 h-4" /> Instant Meet</>}
+        </button>
         <Button
           variant="secondary"
           onClick={() => navigate('/clinical/alerts')}

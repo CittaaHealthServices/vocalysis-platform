@@ -553,4 +553,67 @@ router.get('/availability/:clinicianId', requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * POST /consultations/instant-meet
+ * Create an instant (ad-hoc) Google Meet room not tied to a consultation.
+ * Useful for urgent/unscheduled sessions.
+ */
+router.post('/instant-meet', requireAuth, async (req, res) => {
+  try {
+    const meet = await googleService.createMeetSpace(`instant-${req.user._id}-${Date.now()}`);
+    res.json({ meetLink: meet.meetLink, meetId: meet.meetId });
+  } catch (err) {
+    logger.error('Failed to create instant Meet', { error: err.message });
+    res.status(500).json({ error: 'Failed to create instant Meet room' });
+  }
+});
+
+/**
+ * POST /consultations/:id/meet-link
+ * Create (or return existing) Google Meet link for a consultation.
+ * Accessible by the clinician, HR admin, employee of the consultation.
+ */
+router.post('/:id/meet-link', requireAuth, async (req, res) => {
+  try {
+    const consultation = await Consultation.findById(req.params.id);
+    if (!consultation) return res.status(404).json({ error: 'Consultation not found' });
+
+    // Return existing link if already created
+    if (consultation.googleMeet?.meetLink) {
+      return res.json({
+        meetLink: consultation.googleMeet.meetLink,
+        meetId:   consultation.googleMeet.meetId,
+        existing: true,
+      });
+    }
+
+    // Create new Meet space via Google Meet API v2 (or fallback)
+    const meet = await googleService.createMeetSpace(consultation._id.toString());
+
+    consultation.googleMeet = {
+      meetLink:     meet.meetLink,
+      meetId:       meet.meetId,
+      conferenceId: meet.spaceId,
+      joinUrl:      meet.meetLink,
+      createdAt:    new Date(),
+    };
+    await consultation.save();
+
+    logger.info('Meet link created for consultation', {
+      consultationId: consultation._id,
+      meetLink: meet.meetLink,
+      source: meet.source,
+    });
+
+    res.json({
+      meetLink: meet.meetLink,
+      meetId:   meet.meetId,
+      existing: false,
+    });
+  } catch (err) {
+    logger.error('Failed to create Meet link', { error: err.message });
+    res.status(500).json({ error: 'Failed to create Google Meet link' });
+  }
+});
+
 module.exports = router;

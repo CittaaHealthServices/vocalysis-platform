@@ -1,13 +1,74 @@
 const { google } = require('googleapis');
+const https = require('https');
 const logger = require('../utils/logger');
 
 class GoogleService {
   constructor() {
+    this.apiKey = process.env.GOOGLE_API_KEY;
     this.oauth2Client = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
       process.env.GOOGLE_CLIENT_SECRET,
       process.env.GOOGLE_REDIRECT_URI
     );
+  }
+
+  /**
+   * Create an instant Google Meet space using the Meet REST API v2 with API key.
+   * Falls back to a deterministic room ID if the API call fails.
+   */
+  async createMeetSpace(consultationId = null) {
+    // Try Google Meet REST API v2
+    if (this.apiKey) {
+      try {
+        const result = await new Promise((resolve, reject) => {
+          const body = JSON.stringify({});
+          const options = {
+            hostname: 'meet.googleapis.com',
+            path: `/v2/spaces?key=${this.apiKey}`,
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Content-Length': Buffer.byteLength(body),
+            },
+          };
+          const req = https.request(options, (res) => {
+            let data = '';
+            res.on('data', (chunk) => { data += chunk; });
+            res.on('end', () => {
+              if (res.statusCode >= 200 && res.statusCode < 300) {
+                resolve(JSON.parse(data));
+              } else {
+                reject(new Error(`Meet API returned ${res.statusCode}: ${data}`));
+              }
+            });
+          });
+          req.on('error', reject);
+          req.write(body);
+          req.end();
+        });
+
+        logger.info('Google Meet space created via API v2', { name: result.name });
+        return {
+          meetLink: result.meetingUri,
+          meetId:   result.meetingCode,
+          spaceId:  result.name,
+          source:   'meet-api-v2',
+        };
+      } catch (err) {
+        logger.warn('Meet API v2 space creation failed, using fallback', { error: err.message });
+      }
+    }
+
+    // Fallback: generate a deterministic room code from the consultationId
+    const seed = consultationId || `room-${Date.now()}`;
+    const hash = Buffer.from(seed).toString('base64').replace(/[^a-z]/gi, '').toLowerCase();
+    const code = `${hash.slice(0, 3)}-${hash.slice(3, 7)}-${hash.slice(7, 10)}`;
+    return {
+      meetLink: `https://meet.google.com/${code}`,
+      meetId:   code,
+      spaceId:  null,
+      source:   'fallback',
+    };
   }
 
   /**
