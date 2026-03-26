@@ -127,12 +127,88 @@ async function startServer() {
   process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
   // Connect to databases in the background (after HTTP server is up)
-  connectMongoDB().catch((err) => {
+  connectMongoDB().then(() => seedAdmin()).catch((err) => {
     logger.error('Background MongoDB connection failed', { error: err.message });
   });
   verifyRedis().catch((err) => {
     logger.error('Background Redis connection failed', { error: err.message });
   });
+}
+
+/**
+ * Seed the first CITTAA_SUPER_ADMIN when SEED_ADMIN=true is set.
+ * Safe: only creates the user if no super-admin exists yet.
+ */
+async function seedAdmin() {
+  if (process.env.SEED_ADMIN !== 'true') return;
+  try {
+    const bcrypt = require('bcryptjs');
+    const { v4: uuidv4 } = require('uuid');
+    const db = mongoose.connection.db;
+    const tenantsCol = db.collection('tenants');
+    const usersCol   = db.collection('users');
+
+    const TENANT_ID      = process.env.SEED_TENANT_ID      || 'cittaa-platform';
+    const ADMIN_EMAIL    = process.env.SEED_ADMIN_EMAIL    || 'admin@cittaa.in';
+    const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD || 'Cittaa@Admin2026!';
+
+    // Upsert platform tenant
+    await tenantsCol.updateOne(
+      { tenantId: TENANT_ID },
+      { $setOnInsert: {
+          tenantId: TENANT_ID,
+          displayName: 'Cittaa Health Services',
+          legalName: 'Cittaa Health Services Pvt Ltd',
+          type: 'clinic',
+          industry: 'Mental Health',
+          status: 'active',
+          isActive: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }
+      },
+      { upsert: true }
+    );
+
+    // Hash password
+    const salt         = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, salt);
+
+    // Upsert super-admin user
+    const existing = await usersCol.findOne({ email: ADMIN_EMAIL });
+    if (existing) {
+      await usersCol.updateOne(
+        { email: ADMIN_EMAIL },
+        { $set: { passwordHash, salt, isActive: true, isEmailVerified: true, updatedAt: new Date(), role: 'CITTAA_SUPER_ADMIN' } }
+      );
+      logger.info('SEED: Super-admin password reset', { email: ADMIN_EMAIL });
+    } else {
+      await usersCol.insertOne({
+        userId: uuidv4(),
+        tenantId: TENANT_ID,
+        email: ADMIN_EMAIL,
+        passwordHash,
+        salt,
+        role: 'CITTAA_SUPER_ADMIN',
+        firstName: 'Super',
+        lastName: 'Admin',
+        isActive: true,
+        isEmailVerified: true,
+        emailVerified: true,
+        status: 'active',
+        loginAttempts: 0,
+        mfaEnabled: false,
+        consentRecord: { consentGiven: true, consentDate: new Date(), consentVersion: '1.0', dataProcessingConsent: true, researchConsent: false },
+        notificationPreferences: { emailAlerts: true, inAppAlerts: true, whatsappAlerts: false, alertOnHighRisk: true, alertOnAssessmentComplete: true, weeklyReport: false },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      logger.info('SEED: Super-admin created', { email: ADMIN_EMAIL });
+    }
+    logger.info('✅ SEED complete — admin ready', { email: ADMIN_EMAIL });
+  } catch (err) {
+    logger.error('SEED failed', { error: err.message });
+  }
 }
 
 // Start the server
