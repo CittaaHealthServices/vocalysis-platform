@@ -37,11 +37,13 @@ const requireRole = (...allowedRoles) => {
 
     const userRole = req.user.role;
 
-    if (!allowedRoles.includes(userRole)) {
+    // Support both requireRole(['A','B']) and requireRole('A','B') calling conventions
+    const flatRoles = allowedRoles.flat();
+    if (!flatRoles.includes(userRole)) {
       logger.warn('User role not authorized', {
         userId: req.user.userId,
         userRole,
-        allowedRoles,
+        allowedRoles: flatRoles,
         path: req.path,
         method: req.method,
       });
@@ -50,7 +52,7 @@ const requireRole = (...allowedRoles) => {
         success: false,
         message: 'You do not have permission to access this resource',
         code: 'INSUFFICIENT_PERMISSIONS',
-        requiredRoles: allowedRoles,
+        requiredRoles: flatRoles,
       });
     }
 
