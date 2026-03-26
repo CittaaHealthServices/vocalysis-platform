@@ -170,7 +170,15 @@ export const SessionResults = () => {
           <p className="text-gray-600">Patient: {session?.patientName}</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="secondary">Generate PDF Report</Button>
+          <Button variant="secondary" onClick={async () => {
+            try {
+              const res = await api.get(`/sessions/${id}/report`, { responseType: 'blob' })
+              const url = URL.createObjectURL(new Blob([res], { type: 'application/pdf' }))
+              const a = document.createElement('a'); a.href = url; a.download = `session-${id}-report.pdf`; a.click()
+            } catch {
+              toast.error('PDF report not available yet')
+            }
+          }}>Generate PDF Report</Button>
         </div>
       </div>
 
@@ -190,7 +198,7 @@ export const SessionResults = () => {
         >
           Edit Clinical Notes
         </Button>
-        <Button variant="secondary">
+        <Button variant="secondary" onClick={() => setConsultationModalOpen(true)}>
           Schedule Follow-up
         </Button>
       </div>

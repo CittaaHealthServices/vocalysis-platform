@@ -1,23 +1,78 @@
 import { useNavigate } from 'react-router-dom'
-import { Menu, Bell, LogOut, User, Settings, AlertTriangle } from 'lucide-react'
+import { Menu, Bell, LogOut, User, Settings, AlertTriangle, X, CheckCircle2, AlertCircle, Info } from 'lucide-react'
 import { useState, useRef, useEffect } from 'react'
 import { useAuth } from '../../hooks/useAuth'
+import api from '../../services/api'
+
+/* Role-based profile and settings destinations */
+const PROFILE_ROUTES = {
+  EMPLOYEE:              '/my/profile',
+  COMPANY_ADMIN:         '/company/settings',
+  HR_ADMIN:              null,
+  SENIOR_CLINICIAN:      null,
+  CLINICAL_PSYCHOLOGIST: null,
+  EAP_PROVIDER:          null,
+  CITTAA_SUPER_ADMIN:    '/cittaa-admin',
+  CITTAA_CEO:            '/ceo',
+}
+
+const SETTINGS_ROUTES = {
+  EMPLOYEE:              '/my/profile',
+  COMPANY_ADMIN:         '/company/settings',
+  HR_ADMIN:              null,
+  SENIOR_CLINICIAN:      null,
+  CLINICAL_PSYCHOLOGIST: null,
+  EAP_PROVIDER:          null,
+  CITTAA_SUPER_ADMIN:    '/cittaa-admin/api-keys',
+  CITTAA_CEO:            null,
+}
+
+/* Mock notifications — replace with real API call when backend is ready */
+const MOCK_NOTIFS = [
+  { id: 1, type: 'alert',   title: 'High-risk alert',       body: 'Employee in Engineering flagged as high-risk', time: '5 min ago', read: false },
+  { id: 2, type: 'info',    title: 'Assessment completed',  body: 'Wellness check-in submitted by Priya S.',      time: '1 hr ago',  read: false },
+  { id: 3, type: 'success', title: 'Onboarding complete',   body: 'TechCorp India has been successfully onboarded', time: '2 hr ago', read: true  },
+  { id: 4, type: 'info',    title: 'New consultation booked', body: 'Session scheduled for tomorrow at 3:00 PM',   time: '3 hr ago',  read: true  },
+]
+
+function NotifIcon({ type }) {
+  if (type === 'alert')   return <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+  if (type === 'success') return <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
+  return <Info className="w-4 h-4 text-blue-500 flex-shrink-0" />
+}
 
 export const TopNav = ({ onMenuClick, userImpersonating = false }) => {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
-  const [dropdownOpen, setDropdownOpen] = useState(false)
-  const dropdownRef = useRef(null)
 
+  const [dropdownOpen, setDropdownOpen]   = useState(false)
+  const [notifOpen, setNotifOpen]         = useState(false)
+  const [notifs, setNotifs]               = useState(MOCK_NOTIFS)
+
+  const dropdownRef = useRef(null)
+  const notifRef    = useRef(null)
+
+  /* Close panels on outside click */
   useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
-        setDropdownOpen(false)
-      }
+    const handler = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setDropdownOpen(false)
+      if (notifRef.current    && !notifRef.current.contains(e.target))    setNotifOpen(false)
     }
-    window.addEventListener('mousedown', handleClickOutside)
-    return () => window.removeEventListener('mousedown', handleClickOutside)
+    window.addEventListener('mousedown', handler)
+    return () => window.removeEventListener('mousedown', handler)
   }, [])
+
+  const unreadCount  = notifs.filter(n => !n.read).length
+  const profileRoute = PROFILE_ROUTES[user?.role]
+  const settingsRoute= SETTINGS_ROUTES[user?.role]
+
+  const displayName  = user?.firstName
+    ? `${user.firstName} ${user.lastName || ''}`.trim()
+    : user?.name || user?.email || 'User'
+  const initials     = displayName.charAt(0).toUpperCase()
+
+  const handleMarkAllRead = () => setNotifs(n => n.map(x => ({ ...x, read: true })))
+  const handleMarkRead    = (id) => setNotifs(n => n.map(x => x.id === id ? { ...x, read: true } : x))
 
   const handleLogout = async () => {
     await logout()
@@ -25,8 +80,9 @@ export const TopNav = ({ onMenuClick, userImpersonating = false }) => {
   }
 
   return (
-    <header className="sticky top-0 z-40 bg-white border-b border-gray-200">
-      <div className="flex items-center justify-between px-6 py-4">
+    <header className="sticky top-0 z-40 bg-white border-b border-gray-100 shadow-sm">
+      <div className="flex items-center justify-between px-6 py-3">
+
         {/* Left */}
         <div className="flex items-center gap-4">
           <button
@@ -35,73 +91,144 @@ export const TopNav = ({ onMenuClick, userImpersonating = false }) => {
           >
             <Menu className="w-6 h-6 text-gray-600" />
           </button>
-          <h1 className="text-xl font-semibold text-app hidden md:block">
-            Vocalysis Platform
-          </h1>
+          <span className="text-lg font-bold text-gray-900 hidden md:block"
+                style={{ fontFamily: "'Kaushan Script', cursive" }}>
+            Vocalysis
+          </span>
         </div>
 
         {/* Right */}
-        <div className="flex items-center gap-4">
-          {/* Impersonation Banner */}
+        <div className="flex items-center gap-2">
+
+          {/* Impersonation banner */}
           {userImpersonating && (
-            <div className="flex items-center gap-2 px-4 py-2 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-red-50 border border-red-200 rounded-lg mr-2">
               <AlertTriangle className="w-4 h-4 text-red-600" />
-              <span className="text-sm text-red-700 font-medium">Impersonating User</span>
+              <span className="text-xs text-red-700 font-semibold">Impersonating User</span>
             </div>
           )}
 
-          {/* Notifications */}
-          <button className="relative p-2 hover:bg-gray-100 rounded-lg transition">
-            <Bell className="w-6 h-6 text-gray-600" />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-red-600 rounded-full" />
-          </button>
-
-          {/* User Dropdown */}
-          <div className="relative" ref={dropdownRef}>
+          {/* ── Notifications bell ── */}
+          <div className="relative" ref={notifRef}>
             <button
-              onClick={() => setDropdownOpen(!dropdownOpen)}
-              className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 rounded-lg transition"
+              onClick={() => { setNotifOpen(o => !o); setDropdownOpen(false) }}
+              className="relative p-2 hover:bg-gray-100 rounded-xl transition"
+              title="Notifications"
             >
-              <div className="w-8 h-8 rounded-full bg-cittaa-700 flex items-center justify-center text-white text-sm font-bold">
-                {user?.name?.charAt(0) || 'U'}
-              </div>
-              <span className="text-sm font-medium text-app hidden sm:block">{user?.name}</span>
+              <Bell className="w-5 h-5 text-gray-600" />
+              {unreadCount > 0 && (
+                <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-white text-[9px] font-bold leading-none">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
             </button>
 
-            {/* Dropdown Menu */}
-            {dropdownOpen && (
-              <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg border border-gray-200 shadow-lg overflow-hidden">
-                <div className="px-4 py-3 border-b border-gray-100">
-                  <p className="text-sm font-semibold text-app">{user?.name}</p>
-                  <p className="text-xs text-gray-500">{user?.email}</p>
+            {/* Notifications panel */}
+            {notifOpen && (
+              <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl border border-gray-100 shadow-xl overflow-hidden z-50">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+                  <span className="font-semibold text-gray-900 text-sm">Notifications</span>
+                  <div className="flex items-center gap-2">
+                    {unreadCount > 0 && (
+                      <button
+                        onClick={handleMarkAllRead}
+                        className="text-xs text-violet-600 font-semibold hover:text-violet-700"
+                      >
+                        Mark all read
+                      </button>
+                    )}
+                    <button onClick={() => setNotifOpen(false)} className="text-gray-400 hover:text-gray-600">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
-                <button
-                  onClick={() => {
-                    navigate('/my/profile')
-                    setDropdownOpen(false)
-                  }}
-                  className="w-full flex items-center gap-3 px-4 py-2 text-sm text-app hover:bg-gray-50 transition"
-                >
-                  <User className="w-4 h-4" />
-                  My Profile
-                </button>
-                <button
-                  onClick={() => {
-                    navigate('/company/settings')
-                    setDropdownOpen(false)
-                  }}
-                  className="w-full flex items-center gap-3 px-4 py-2 text-sm text-app hover:bg-gray-50 transition"
-                >
-                  <Settings className="w-4 h-4" />
-                  Settings
-                </button>
+
+                <div className="max-h-72 overflow-y-auto divide-y divide-gray-50">
+                  {notifs.length === 0 ? (
+                    <p className="text-center text-sm text-gray-400 py-8">No notifications</p>
+                  ) : notifs.map(n => (
+                    <div
+                      key={n.id}
+                      onClick={() => handleMarkRead(n.id)}
+                      className={`flex items-start gap-3 px-4 py-3 cursor-pointer transition-colors hover:bg-gray-50 ${!n.read ? 'bg-violet-50/40' : ''}`}
+                    >
+                      <NotifIcon type={n.type} />
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm font-semibold text-gray-800 truncate ${!n.read ? 'text-gray-900' : ''}`}>
+                          {n.title}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-0.5 leading-snug">{n.body}</p>
+                        <p className="text-[11px] text-gray-400 mt-1">{n.time}</p>
+                      </div>
+                      {!n.read && (
+                        <span className="w-2 h-2 rounded-full bg-violet-500 flex-shrink-0 mt-1.5" />
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="border-t border-gray-100 px-4 py-2.5 text-center">
+                  <button className="text-xs text-violet-600 font-semibold hover:text-violet-700">
+                    View all notifications
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── User dropdown ── */}
+          <div className="relative" ref={dropdownRef}>
+            <button
+              onClick={() => { setDropdownOpen(o => !o); setNotifOpen(false) }}
+              className="flex items-center gap-2.5 px-3 py-1.5 hover:bg-gray-100 rounded-xl transition"
+            >
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-600 to-purple-800 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
+                {initials}
+              </div>
+              <span className="text-sm font-semibold text-gray-800 hidden sm:block max-w-[120px] truncate">
+                {displayName}
+              </span>
+            </button>
+
+            {dropdownOpen && (
+              <div className="absolute right-0 mt-2 w-52 bg-white rounded-2xl border border-gray-100 shadow-xl overflow-hidden z-50">
+                {/* User info */}
+                <div className="px-4 py-3 border-b border-gray-100">
+                  <p className="text-sm font-semibold text-gray-900 truncate">{displayName}</p>
+                  <p className="text-xs text-gray-500 truncate">{user?.email}</p>
+                </div>
+
+                {/* Profile */}
+                {profileRoute && (
+                  <button
+                    onClick={() => { navigate(profileRoute); setDropdownOpen(false) }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition"
+                  >
+                    <User className="w-4 h-4 text-gray-400" />
+                    My Profile
+                  </button>
+                )}
+
+                {/* Settings */}
+                {settingsRoute && (
+                  <button
+                    onClick={() => { navigate(settingsRoute); setDropdownOpen(false) }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition"
+                  >
+                    <Settings className="w-4 h-4 text-gray-400" />
+                    Settings
+                  </button>
+                )}
+
                 <div className="border-t border-gray-100" />
+
+                {/* Logout */}
                 <button
                   onClick={handleLogout}
-                  className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition"
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition"
                 >
                   <LogOut className="w-4 h-4" />
-                  Logout
+                  Sign out
                 </button>
               </div>
             )}
