@@ -30,7 +30,7 @@ export default defineConfig({
       output: {
         manualChunks: {
           react: ['react', 'react-dom', 'react-router-dom'],
-          charts: ['recharts', 'plotly.js', 'react-plotly.js'],
+          charts: ['recharts'],
           ui: ['@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu', '@radix-ui/react-tabs'],
           utils: ['axios', '@tanstack/react-query', 'date-fns', 'react-hook-form', 'zod']
         }
