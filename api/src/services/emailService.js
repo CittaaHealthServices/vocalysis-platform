@@ -1,434 +1,560 @@
-const nodemailer = require('nodemailer');
+/**
+ * EmailService — Vocalysis Platform
+ * Beautiful transactional emails powered by Resend
+ */
+const { Resend } = require('resend');
 const logger = require('../utils/logger');
 
-class EmailService {
-  constructor() {
-    this.transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: process.env.SMTP_PORT || 587,
-      secure: process.env.SMTP_SECURE === 'true',
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS
-      }
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+const FROM_EMAIL  = process.env.RESEND_FROM_EMAIL || 'info@cittaa.in';
+const BRAND_NAME  = 'Cittaa Health Services';
+const BRAND_COLOR = '#7c3aed';  // violet-700
+const PLATFORM_URL = process.env.PLATFORM_URL || 'https://striking-bravery-production-c13e.up.railway.app';
+
+/* ─────────────────────────────────────────────────────────────────────────── *
+ * Shared CSS                                                                   *
+ * ─────────────────────────────────────────────────────────────────────────── */
+const BASE_STYLES = `
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #f5f3ff;
+    color: #1e1b2e;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrapper {
+    max-width: 600px;
+    margin: 40px auto;
+    background: #ffffff;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 4px 40px rgba(124,58,237,0.10);
+  }
+  .header {
+    background: linear-gradient(135deg, #4c1d95 0%, #7c3aed 60%, #a855f7 100%);
+    padding: 40px 48px 36px;
+    text-align: left;
+  }
+  .logo-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 28px;
+  }
+  .logo-icon {
+    width: 36px; height: 36px;
+    background: rgba(255,255,255,0.2);
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 900;
+    font-size: 18px;
+    color: #fff;
+    line-height: 1;
+    text-align: center;
+    vertical-align: middle;
+    padding: 6px;
+  }
+  .logo-text {
+    font-size: 15px;
+    font-weight: 700;
+    color: rgba(255,255,255,0.95);
+    letter-spacing: -0.2px;
+  }
+  .header h1 {
+    font-size: 26px;
+    font-weight: 700;
+    color: #ffffff;
+    letter-spacing: -0.5px;
+    line-height: 1.25;
+  }
+  .header p {
+    margin-top: 8px;
+    font-size: 15px;
+    color: rgba(255,255,255,0.7);
+  }
+  .body {
+    padding: 40px 48px;
+  }
+  .greeting {
+    font-size: 16px;
+    color: #374151;
+    margin-bottom: 16px;
+    line-height: 1.6;
+  }
+  .card {
+    background: #f9f7ff;
+    border: 1px solid #e5e0f9;
+    border-radius: 12px;
+    padding: 24px;
+    margin: 24px 0;
+  }
+  .card-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid #ede9fe;
+    font-size: 14px;
+  }
+  .card-row:last-child { border-bottom: none; }
+  .card-row .label { color: #6b7280; font-weight: 500; }
+  .card-row .value { color: #1e1b2e; font-weight: 600; }
+  .btn {
+    display: inline-block;
+    background: linear-gradient(135deg, #7c3aed, #6d28d9);
+    color: #ffffff !important;
+    text-decoration: none;
+    font-size: 15px;
+    font-weight: 600;
+    padding: 14px 32px;
+    border-radius: 10px;
+    margin: 8px 0;
+    letter-spacing: -0.1px;
+  }
+  .btn-outline {
+    display: inline-block;
+    background: transparent;
+    color: #7c3aed !important;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 12px 28px;
+    border-radius: 10px;
+    border: 1.5px solid #7c3aed;
+    margin: 8px 0;
+  }
+  .btn-center { text-align: center; margin: 32px 0; }
+  .alert-banner {
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin: 24px 0;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  .alert-warning {
+    background: #fffbeb;
+    border-left: 4px solid #f59e0b;
+    color: #92400e;
+  }
+  .alert-danger {
+    background: #fff1f2;
+    border-left: 4px solid #ef4444;
+    color: #991b1b;
+  }
+  .alert-info {
+    background: #f0f9ff;
+    border-left: 4px solid #0ea5e9;
+    color: #0c4a6e;
+  }
+  .stat-grid {
+    display: flex;
+    gap: 16px;
+    margin: 24px 0;
+  }
+  .stat-box {
+    flex: 1;
+    background: #f9f7ff;
+    border: 1px solid #ede9fe;
+    border-radius: 12px;
+    padding: 20px 16px;
+    text-align: center;
+  }
+  .stat-value {
+    font-size: 28px;
+    font-weight: 700;
+    color: #7c3aed;
+    letter-spacing: -1px;
+  }
+  .stat-label {
+    font-size: 12px;
+    color: #9ca3af;
+    margin-top: 4px;
+    font-weight: 500;
+  }
+  .divider {
+    height: 1px;
+    background: #f3f4f6;
+    margin: 32px 0;
+  }
+  .tag {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 99px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+  }
+  .tag-critical { background: #fee2e2; color: #991b1b; }
+  .tag-high     { background: #ffedd5; color: #9a3412; }
+  .tag-medium   { background: #fef9c3; color: #854d0e; }
+  .tag-low      { background: #dcfce7; color: #166534; }
+  .footer {
+    background: #faf5ff;
+    border-top: 1px solid #f3f0ff;
+    padding: 28px 48px;
+    text-align: center;
+  }
+  .footer p { font-size: 12px; color: #9ca3af; line-height: 1.8; }
+  .footer a { color: #7c3aed; text-decoration: none; }
+  .footer .brand { font-weight: 700; color: #6b21a8; }
+`;
+
+/* ─────────────────────────────────────────────────────────────────────────── *
+ * Shared header / footer fragments                                             *
+ * ─────────────────────────────────────────────────────────────────────────── */
+function htmlHeader(title, subtitle = '') {
+  return `
+  <div class="header">
+    <div class="logo-badge">
+      <span class="logo-icon">V</span>
+      <span class="logo-text">Vocalysis &nbsp;·&nbsp; ${BRAND_NAME}</span>
+    </div>
+    <h1>${title}</h1>
+    ${subtitle ? `<p>${subtitle}</p>` : ''}
+  </div>`;
+}
+
+function htmlFooter() {
+  return `
+  <div class="footer">
+    <p>
+      Powered by <span class="brand">VocaCore™</span> &nbsp;|&nbsp; <span class="brand">${BRAND_NAME}</span>
+    </p>
+    <p style="margin-top:6px;">
+      This is an automated message from the Vocalysis Platform.
+      &nbsp;<a href="${PLATFORM_URL}">Visit Platform</a>
+    </p>
+    <p style="margin-top:6px; font-size:11px; color:#d1d5db;">
+      © ${new Date().getFullYear()} ${BRAND_NAME}. All rights reserved.
+    </p>
+  </div>`;
+}
+
+function wrapHtml(inner) {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>${BASE_STYLES}</style>
+</head>
+<body>
+  <div class="wrapper">
+    ${inner}
+  </div>
+</body>
+</html>`;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────── *
+ * Core send helper                                                             *
+ * ─────────────────────────────────────────────────────────────────────────── */
+async function sendEmail({ to, subject, html, text }) {
+  try {
+    const { data, error } = await resend.emails.send({
+      from:    FROM_EMAIL,
+      to:      Array.isArray(to) ? to : [to],
+      subject,
+      html,
+      text:    text || subject,
     });
 
-    this.fromEmail = process.env.SMTP_FROM_EMAIL || 'noreply@cittaa.com';
-    this.brandName = 'Cittaa Health Services';
-  }
-
-  /**
-   * Base email sending method
-   */
-  async sendEmail({ to, subject, html, text }) {
-    try {
-      const result = await this.transporter.sendMail({
-        from: this.fromEmail,
-        to,
-        subject,
-        html,
-        text,
-        headers: {
-          'X-Mailer': 'Vocalysis Platform v2.0'
-        }
-      });
-
-      logger.debug('Email sent', {
-        to,
-        subject,
-        messageId: result.messageId
-      });
-
-      return { success: true, messageId: result.messageId };
-    } catch (err) {
-      logger.error('Failed to send email', {
-        error: err.message,
-        to,
-        subject
-      });
-      throw new Error('Failed to send email');
+    if (error) {
+      logger.error('Resend email error', { error, to, subject });
+      throw new Error(error.message || 'Email send failed');
     }
+
+    logger.debug('Email sent via Resend', { id: data?.id, to, subject });
+    return { success: true, id: data?.id };
+  } catch (err) {
+    logger.error('Failed to send email', { error: err.message, to, subject });
+    throw err;
   }
+}
 
-  /**
-   * Send assessment invitation email
-   */
-  async sendAssessmentInvite({ employee, clinicianName, assessmentUrl, scheduledAt }) {
-    const subject = `Assessment Invitation from ${clinicianName}`;
-    const scheduledDate = new Date(scheduledAt).toLocaleString('en-IN', {
-      dateStyle: 'long',
-      timeStyle: 'short',
-      timeZone: 'Asia/Kolkata'
-    });
+/* ─────────────────────────────────────────────────────────────────────────── *
+ * WELCOME EMAIL                                                                *
+ * ─────────────────────────────────────────────────────────────────────────── */
+async function sendWelcomeEmail({ to, name, loginUrl, tempPassword, companyName }) {
+  const subject = `Welcome to Vocalysis — ${companyName}`;
 
-    const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style>
-    body { font-family: Arial, sans-serif; color: #333; }
-    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { background-color: #0066cc; color: white; padding: 20px; text-align: center; border-radius: 4px 4px 0 0; }
-    .content { background-color: #f9f9f9; padding: 30px; border: 1px solid #ddd; border-top: none; }
-    .button { display: inline-block; background-color: #0066cc; color: white; padding: 12px 30px; text-decoration: none; border-radius: 4px; margin: 20px 0; }
-    .footer { font-size: 12px; color: #666; margin-top: 30px; text-align: center; border-top: 1px solid #ddd; padding-top: 20px; }
-    .info-box { background-color: #e8f4f8; padding: 15px; border-left: 4px solid #0066cc; margin: 15px 0; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>VocaCore™ Assessment Invitation</h1>
-    </div>
-    <div class="content">
-      <p>Hello ${employee.firstName},</p>
+  const html = wrapHtml(`
+    ${htmlHeader('Welcome aboard, ' + name + '!', 'Your account is ready. Let\'s get started.')}
+    <div class="body">
+      <p class="greeting">
+        Hi <strong>${name}</strong>, you've been added to <strong>${companyName}</strong>'s wellness platform,
+        powered by Vocalysis. Your account is all set up and ready to go.
+      </p>
 
-      <p>${clinicianName} has invited you to complete a VocaCore™ wellness assessment. This assessment analyzes your voice to provide personalized insights about your emotional wellness.</p>
-
-      <div class="info-box">
-        <strong>Assessment Scheduled:</strong><br>
-        ${scheduledDate} IST
+      <div class="card">
+        <div class="card-row">
+          <span class="label">Email address</span>
+          <span class="value">${to}</span>
+        </div>
+        <div class="card-row">
+          <span class="label">Temporary password</span>
+          <span class="value" style="font-family:monospace; letter-spacing:1px;">${tempPassword}</span>
+        </div>
+        <div class="card-row">
+          <span class="label">Organisation</span>
+          <span class="value">${companyName}</span>
+        </div>
       </div>
 
-      <p>The assessment typically takes 5-10 minutes and can be completed from any quiet location using your computer or mobile device.</p>
-
-      <center>
-        <a href="${assessmentUrl}" class="button">Start Assessment</a>
-      </center>
-
-      <p>If you have any questions, please contact your clinician or the wellness team.</p>
-
-      <div class="footer">
-        <p>Powered by VocaCore™ | ${this.brandName}</p>
-        <p>This is an automated message. Please do not reply to this email.</p>
-      </div>
-    </div>
-  </div>
-</body>
-</html>`;
-
-    const text = `Assessment Invitation\n\nHello ${employee.firstName},\n\n${clinicianName} has invited you to complete a VocaCore™ wellness assessment.\n\nScheduled: ${scheduledDate} IST\n\nClick here to start: ${assessmentUrl}`;
-
-    return this.sendEmail({
-      to: employee.email,
-      subject,
-      html,
-      text
-    });
-  }
-
-  /**
-   * Send alert notification email
-   */
-  async sendAlertNotification({ to, alert, employee, tenantName }) {
-    const alertLevelLabel = {
-      high: 'High Priority',
-      critical: 'Critical Priority'
-    };
-
-    const subject = `[${alertLevelLabel[alert.alertLevel] || 'Alert'}] Wellness Alert for ${employee.firstName} ${employee.lastName}`;
-
-    const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style>
-    body { font-family: Arial, sans-serif; color: #333; }
-    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { background-color: ${alert.alertLevel === 'critical' ? '#d32f2f' : '#f57c00'}; color: white; padding: 20px; text-align: center; border-radius: 4px 4px 0 0; }
-    .content { background-color: #f9f9f9; padding: 30px; border: 1px solid #ddd; border-top: none; }
-    .alert-box { background-color: ${alert.alertLevel === 'critical' ? '#ffebee' : '#fff3e0'}; border-left: 4px solid ${alert.alertLevel === 'critical' ? '#d32f2f' : '#f57c00'}; padding: 15px; margin: 15px 0; }
-    .score { display: inline-block; background-color: #fff; padding: 10px 15px; border-radius: 4px; margin: 5px; font-weight: bold; }
-    .footer { font-size: 12px; color: #666; margin-top: 30px; text-align: center; border-top: 1px solid #ddd; padding-top: 20px; }
-    .action-button { display: inline-block; background-color: ${alert.alertLevel === 'critical' ? '#d32f2f' : '#f57c00'}; color: white; padding: 12px 30px; text-decoration: none; border-radius: 4px; margin: 20px 0; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>${alertLevelLabel[alert.alertLevel] || 'Alert'}</h1>
-    </div>
-    <div class="content">
-      <p>A wellness alert has been triggered in ${tenantName}.</p>
-
-      <div class="alert-box">
-        <strong>Employee:</strong> ${employee.firstName} ${employee.lastName}<br>
-        <strong>Alert Level:</strong> ${alert.alertLevel.toUpperCase()}<br>
-        <strong>Triggered Scores:</strong><br>
-        ${alert.triggeringScores.map(score => `<span class="score">${score}</span>`).join('')}
+      <div class="alert-banner alert-warning">
+        <strong>Action required:</strong> Please log in and change your password immediately.
+        Your temporary password will expire in 24 hours.
       </div>
 
-      <p>This alert indicates that the employee may benefit from additional support or consultation. Please review the assessment results and consider taking appropriate action.</p>
-
-      <center>
-        <a href="${process.env.PLATFORM_URL}/alerts/${alert._id}" class="action-button">Review Alert</a>
-      </center>
-
-      <div class="footer">
-        <p>Powered by VocaCore™ | ${this.brandName}</p>
-        <p>This is an automated alert system. Please handle with appropriate confidentiality.</p>
-      </div>
-    </div>
-  </div>
-</body>
-</html>`;
-
-    const text = `Wellness Alert\n\nAlert Level: ${alert.alertLevel.toUpperCase()}\nEmployee: ${employee.firstName} ${employee.lastName}\n\nTriggering Scores:\n${alert.triggeringScores.join('\n')}\n\nPlease review the assessment results and consider taking appropriate action.`;
-
-    return this.sendEmail({
-      to,
-      subject,
-      html,
-      text
-    });
-  }
-
-  /**
-   * Send consultation invitation email
-   */
-  async sendConsultationInvite({ to, consultation, meetLink, calendarLink }) {
-    const subject = 'Consultation Scheduled - VocaCore™ Wellness Program';
-    const consultationTime = new Date(consultation.scheduledAt).toLocaleString('en-IN', {
-      dateStyle: 'long',
-      timeStyle: 'short',
-      timeZone: 'Asia/Kolkata'
-    });
-
-    const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style>
-    body { font-family: Arial, sans-serif; color: #333; }
-    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { background-color: #0066cc; color: white; padding: 20px; text-align: center; border-radius: 4px 4px 0 0; }
-    .content { background-color: #f9f9f9; padding: 30px; border: 1px solid #ddd; border-top: none; }
-    .details-box { background-color: #e8f4f8; padding: 15px; border-left: 4px solid #0066cc; margin: 15px 0; }
-    .button { display: inline-block; background-color: #0066cc; color: white; padding: 12px 30px; text-decoration: none; border-radius: 4px; margin: 10px 5px; }
-    .footer { font-size: 12px; color: #666; margin-top: 30px; text-align: center; border-top: 1px solid #ddd; padding-top: 20px; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>Consultation Scheduled</h1>
-    </div>
-    <div class="content">
-      <p>Your wellness consultation has been scheduled.</p>
-
-      <div class="details-box">
-        <strong>Date & Time:</strong><br>
-        ${consultationTime} IST<br><br>
-        <strong>Duration:</strong><br>
-        ${consultation.durationMinutes} minutes<br><br>
-        <strong>Type:</strong><br>
-        ${consultation.mode === 'online' ? 'Online (Google Meet)' : 'In-Person'}
-        ${consultation.location ? ` - ${consultation.location}` : ''}
+      <div class="btn-center">
+        <a href="${loginUrl}" class="btn">Sign In to Vocalysis →</a>
       </div>
 
-      <p>Your clinician will provide personalized recommendations based on your assessment results.</p>
+      <div class="divider"></div>
+      <p style="font-size:14px; color:#6b7280; line-height:1.7;">
+        Once you're in, you can complete your profile, update your notification preferences, and begin your first wellness check-in.
+        If you have any questions, contact your administrator or HR team.
+      </p>
+    </div>
+    ${htmlFooter()}
+  `);
 
-      <div style="text-align: center;">
-        ${meetLink ? `<a href="${meetLink}" class="button">Join Meeting</a>` : ''}
-        ${calendarLink ? `<a href="${calendarLink}" class="button">Add to Calendar</a>` : ''}
+  return sendEmail({ to, subject, html, text: `Welcome to Vocalysis!\n\nEmail: ${to}\nTemp Password: ${tempPassword}\nLogin: ${loginUrl}` });
+}
+
+/* ─────────────────────────────────────────────────────────────────────────── *
+ * ASSESSMENT INVITATION                                                        *
+ * ─────────────────────────────────────────────────────────────────────────── */
+async function sendAssessmentInvite({ employee, clinicianName, assessmentUrl, scheduledAt }) {
+  const subject = `You've been invited to a wellness assessment`;
+  const scheduledDate = new Date(scheduledAt).toLocaleString('en-IN', {
+    dateStyle: 'long', timeStyle: 'short', timeZone: 'Asia/Kolkata'
+  });
+
+  const html = wrapHtml(`
+    ${htmlHeader('Wellness Assessment Invitation', `Requested by ${clinicianName}`)}
+    <div class="body">
+      <p class="greeting">Hi <strong>${employee.firstName}</strong>,</p>
+      <p style="font-size:15px; color:#374151; line-height:1.7; margin-bottom:20px;">
+        <strong>${clinicianName}</strong> has invited you to complete a VocaCore™ voice wellness assessment.
+        This takes just 5–10 minutes and provides personalised insights about your emotional wellbeing.
+      </p>
+
+      <div class="card">
+        <div class="card-row">
+          <span class="label">Scheduled for</span>
+          <span class="value">${scheduledDate} IST</span>
+        </div>
+        <div class="card-row">
+          <span class="label">Duration</span>
+          <span class="value">5 – 10 minutes</span>
+        </div>
+        <div class="card-row">
+          <span class="label">Type</span>
+          <span class="value">Voice biomarker analysis</span>
+        </div>
       </div>
 
-      <p>If you need to reschedule or have any questions, please contact the wellness team.</p>
-
-      <div class="footer">
-        <p>Powered by VocaCore™ | ${this.brandName}</p>
-      </div>
-    </div>
-  </div>
-</body>
-</html>`;
-
-    const text = `Consultation Scheduled\n\nDate & Time: ${consultationTime} IST\nDuration: ${consultation.durationMinutes} minutes\nType: ${consultation.mode === 'online' ? 'Online (Google Meet)' : 'In-Person'}${consultation.location ? ` - ${consultation.location}` : ''}\n\nMeeting Link: ${meetLink || 'N/A'}\n\nCalendar Link: ${calendarLink || 'N/A'}`;
-
-    return this.sendEmail({
-      to,
-      subject,
-      html,
-      text
-    });
-  }
-
-  /**
-   * Send welcome email to new user
-   */
-  async sendWelcomeEmail({ to, name, loginUrl, tempPassword, companyName }) {
-    const subject = `Welcome to Vocalysis Platform - ${companyName}`;
-
-    const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style>
-    body { font-family: Arial, sans-serif; color: #333; }
-    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { background-color: #0066cc; color: white; padding: 20px; text-align: center; border-radius: 4px 4px 0 0; }
-    .content { background-color: #f9f9f9; padding: 30px; border: 1px solid #ddd; border-top: none; }
-    .credential-box { background-color: #f0f0f0; padding: 15px; border: 1px solid #ccc; border-radius: 4px; font-family: monospace; margin: 15px 0; }
-    .button { display: inline-block; background-color: #0066cc; color: white; padding: 12px 30px; text-decoration: none; border-radius: 4px; margin: 20px 0; }
-    .footer { font-size: 12px; color: #666; margin-top: 30px; text-align: center; border-top: 1px solid #ddd; padding-top: 20px; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>Welcome to Vocalysis!</h1>
-    </div>
-    <div class="content">
-      <p>Hello ${name},</p>
-
-      <p>Welcome to the Vocalysis Platform powered by ${this.brandName}. Your account has been created and is ready to use.</p>
-
-      <p><strong>Your temporary login credentials:</strong></p>
-      <div class="credential-box">
-        Email: ${to}<br>
-        Temporary Password: ${tempPassword}
+      <div class="alert-banner alert-info">
+        <strong>Tips for best results:</strong> Find a quiet space, ensure your microphone works, and speak naturally for 30 seconds to 2 minutes when prompted.
       </div>
 
-      <p>Please log in and change your password immediately for security purposes.</p>
-
-      <center>
-        <a href="${loginUrl}" class="button">Log In Now</a>
-      </center>
-
-      <p><strong>Next Steps:</strong></p>
-      <ul>
-        <li>Complete your account setup</li>
-        <li>Change your temporary password</li>
-        <li>Enable two-factor authentication (recommended)</li>
-        <li>Familiarize yourself with the platform</li>
-      </ul>
-
-      <p>If you have any questions or need assistance, please contact your administrator.</p>
-
-      <div class="footer">
-        <p>Powered by VocaCore™ | ${this.brandName}</p>
+      <div class="btn-center">
+        <a href="${assessmentUrl}" class="btn">Start Assessment →</a>
       </div>
     </div>
-  </div>
-</body>
-</html>`;
+    ${htmlFooter()}
+  `);
 
-    const text = `Welcome to Vocalysis!\n\nHello ${name},\n\nYour account has been created.\n\nTemporary Login:\nEmail: ${to}\nPassword: ${tempPassword}\n\nPlease log in and change your password immediately.\n\nLogin URL: ${loginUrl}`;
+  return sendEmail({
+    to: employee.email, subject, html,
+    text: `Assessment Invitation from ${clinicianName}\nScheduled: ${scheduledDate}\nLink: ${assessmentUrl}`
+  });
+}
 
-    return this.sendEmail({
-      to,
-      subject,
-      html,
-      text
-    });
-  }
+/* ─────────────────────────────────────────────────────────────────────────── *
+ * ALERT NOTIFICATION                                                           *
+ * ─────────────────────────────────────────────────────────────────────────── */
+async function sendAlertNotification({ to, alert, employee, tenantName }) {
+  const level = alert.alertLevel || 'high';
+  const isCritical = level === 'critical';
+  const subject = `[${level.toUpperCase()}] Wellness Alert — ${employee.firstName} ${employee.lastName}`;
 
-  /**
-   * Send password reset email
-   */
-  async sendPasswordReset({ to, name, resetUrl, expiresIn }) {
-    const subject = 'Password Reset Request - Vocalysis Platform';
-    const expiresText = typeof expiresIn === 'number' ? `This link expires in ${expiresIn} minutes.` : expiresIn;
+  const headerBg = isCritical
+    ? 'linear-gradient(135deg, #7f1d1d 0%, #dc2626 100%)'
+    : 'linear-gradient(135deg, #78350f 0%, #d97706 100%)';
 
-    const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style>
-    body { font-family: Arial, sans-serif; color: #333; }
-    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { background-color: #0066cc; color: white; padding: 20px; text-align: center; border-radius: 4px 4px 0 0; }
-    .content { background-color: #f9f9f9; padding: 30px; border: 1px solid #ddd; border-top: none; }
-    .button { display: inline-block; background-color: #0066cc; color: white; padding: 12px 30px; text-decoration: none; border-radius: 4px; margin: 20px 0; }
-    .warning-box { background-color: #fff3cd; padding: 15px; border-left: 4px solid #ffc107; margin: 15px 0; }
-    .footer { font-size: 12px; color: #666; margin-top: 30px; text-align: center; border-top: 1px solid #ddd; padding-top: 20px; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>Password Reset Request</h1>
+  const html = wrapHtml(`
+    <div class="header" style="background: ${headerBg};">
+      <div class="logo-badge">
+        <span class="logo-icon">V</span>
+        <span class="logo-text">Vocalysis &nbsp;·&nbsp; ${BRAND_NAME}</span>
+      </div>
+      <h1>${isCritical ? 'Critical Alert' : 'High-Priority Alert'}</h1>
+      <p>Immediate attention may be required</p>
     </div>
-    <div class="content">
-      <p>Hello ${name},</p>
+    <div class="body">
+      <p class="greeting">A wellness alert has been triggered in <strong>${tenantName}</strong>.</p>
 
-      <p>We received a request to reset your password. Click the button below to create a new password.</p>
-
-      <center>
-        <a href="${resetUrl}" class="button">Reset Password</a>
-      </center>
-
-      <p>${expiresText}</p>
-
-      <div class="warning-box">
-        <strong>Security Note:</strong> If you did not request this password reset, please ignore this email. Your account remains secure.
+      <div class="card">
+        <div class="card-row">
+          <span class="label">Employee</span>
+          <span class="value">${employee.firstName} ${employee.lastName}</span>
+        </div>
+        <div class="card-row">
+          <span class="label">Alert level</span>
+          <span class="value">
+            <span class="tag tag-${level}">${level.toUpperCase()}</span>
+          </span>
+        </div>
+        ${(alert.triggeringScores || []).length > 0 ? `
+        <div class="card-row" style="flex-direction:column; align-items:flex-start; gap:8px;">
+          <span class="label">Triggering indicators</span>
+          <span class="value">${(alert.triggeringScores || []).join(' · ')}</span>
+        </div>` : ''}
       </div>
 
-      <p>For security, never share this link or your password with anyone.</p>
+      <div class="alert-banner ${isCritical ? 'alert-danger' : 'alert-warning'}">
+        <strong>Action needed:</strong> Review the full assessment and consider scheduling a follow-up consultation.
+        Handle this information with appropriate confidentiality.
+      </div>
 
-      <div class="footer">
-        <p>Powered by VocaCore™ | ${this.brandName}</p>
+      <div class="btn-center">
+        <a href="${PLATFORM_URL}/alerts/${alert._id}" class="btn">Review Alert →</a>
       </div>
     </div>
-  </div>
-</body>
-</html>`;
+    ${htmlFooter()}
+  `);
 
-    const text = `Password Reset Request\n\nHello ${name},\n\nClick here to reset your password: ${resetUrl}\n\n${expiresText}\n\nIf you did not request this, please ignore this email.`;
+  return sendEmail({
+    to, subject, html,
+    text: `[${level.toUpperCase()}] Alert for ${employee.firstName} ${employee.lastName}\n${PLATFORM_URL}/alerts/${alert._id}`
+  });
+}
 
-    return this.sendEmail({
-      to,
-      subject,
-      html,
-      text
-    });
-  }
+/* ─────────────────────────────────────────────────────────────────────────── *
+ * CONSULTATION INVITE                                                          *
+ * ─────────────────────────────────────────────────────────────────────────── */
+async function sendConsultationInvite({ to, consultation, meetLink, calendarLink }) {
+  const subject = 'Your wellness consultation has been scheduled';
+  const consultationTime = new Date(consultation.scheduledAt).toLocaleString('en-IN', {
+    dateStyle: 'full', timeStyle: 'short', timeZone: 'Asia/Kolkata'
+  });
 
-  /**
-   * Send weekly HR report email
-   */
-  async sendWeeklyHRReport({ to, hrAdmin, reportData, tenantName }) {
-    const subject = `Weekly Wellness Report - ${tenantName}`;
-    const reportDate = new Date().toLocaleDateString('en-IN');
+  const html = wrapHtml(`
+    ${htmlHeader('Consultation Scheduled', 'Your session is confirmed')}
+    <div class="body">
+      <p class="greeting">Your wellness consultation has been booked. Here are the details:</p>
 
-    const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style>
-    body { font-family: Arial, sans-serif; color: #333; }
-    .container { max-width: 700px; margin: 0 auto; padding: 20px; }
-    .header { background-color: #0066cc; color: white; padding: 20px; text-align: center; border-radius: 4px 4px 0 0; }
-    .content { background-color: #f9f9f9; padding: 30px; border: 1px solid #ddd; border-top: none; }
-    .stat-box { display: inline-block; background-color: white; padding: 15px 20px; margin: 10px; border-radius: 4px; border: 1px solid #ddd; text-align: center; }
-    .stat-value { font-size: 24px; font-weight: bold; color: #0066cc; }
-    .stat-label { font-size: 12px; color: #666; margin-top: 5px; }
-    .table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-    .table th { background-color: #0066cc; color: white; padding: 10px; text-align: left; }
-    .table td { padding: 10px; border-bottom: 1px solid #ddd; }
-    .table tr:nth-child(even) { background-color: #f5f5f5; }
-    .button { display: inline-block; background-color: #0066cc; color: white; padding: 12px 30px; text-decoration: none; border-radius: 4px; margin: 20px 0; }
-    .footer { font-size: 12px; color: #666; margin-top: 30px; text-align: center; border-top: 1px solid #ddd; padding-top: 20px; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>Weekly Wellness Report</h1>
-      <p>${tenantName} | ${reportDate}</p>
+      <div class="card">
+        <div class="card-row">
+          <span class="label">Date & time</span>
+          <span class="value">${consultationTime} IST</span>
+        </div>
+        <div class="card-row">
+          <span class="label">Duration</span>
+          <span class="value">${consultation.durationMinutes || 30} minutes</span>
+        </div>
+        <div class="card-row">
+          <span class="label">Format</span>
+          <span class="value">${consultation.mode === 'online' ? 'Online · Google Meet' : 'In-Person' + (consultation.location ? ` · ${consultation.location}` : '')}</span>
+        </div>
+      </div>
+
+      ${consultation.mode === 'online' ? `
+        <div class="alert-banner alert-info">
+          <strong>Before your session:</strong> Find a quiet, private space with a stable internet connection.
+          Have your notes or questions ready.
+        </div>` : ''}
+
+      <div class="btn-center">
+        ${meetLink ? `<a href="${meetLink}" class="btn" style="margin-right:12px;">Join Meeting →</a>` : ''}
+        ${calendarLink ? `<a href="${calendarLink}" class="btn-outline">Add to Calendar</a>` : ''}
+      </div>
+
+      <p style="font-size:14px; color:#6b7280; line-height:1.7; margin-top:8px;">
+        Need to reschedule? Contact your clinician or the wellness team as soon as possible.
+      </p>
     </div>
-    <div class="content">
-      <p>Hello ${hrAdmin.firstName},</p>
+    ${htmlFooter()}
+  `);
 
-      <p>Here is your weekly wellness summary for ${tenantName}:</p>
+  return sendEmail({
+    to, subject, html,
+    text: `Consultation Scheduled\n${consultationTime} IST\n${consultation.durationMinutes || 30} minutes\n${meetLink || ''}`
+  });
+}
 
-      <div style="text-align: center; margin: 30px 0;">
+/* ─────────────────────────────────────────────────────────────────────────── *
+ * PASSWORD RESET                                                               *
+ * ─────────────────────────────────────────────────────────────────────────── */
+async function sendPasswordReset({ to, name, resetUrl, expiresIn }) {
+  const subject = 'Reset your Vocalysis password';
+  const expiry = typeof expiresIn === 'number' ? `${expiresIn} minutes` : expiresIn;
+
+  const html = wrapHtml(`
+    ${htmlHeader('Password Reset', 'We received a request to reset your password')}
+    <div class="body">
+      <p class="greeting">Hi <strong>${name}</strong>,</p>
+      <p style="font-size:15px; color:#374151; line-height:1.7; margin-bottom:24px;">
+        Someone requested a password reset for your Vocalysis account.
+        Click the button below to create a new password.
+      </p>
+
+      <div class="btn-center">
+        <a href="${resetUrl}" class="btn">Reset Password →</a>
+      </div>
+
+      <div class="card" style="margin-top:8px;">
+        <div class="card-row">
+          <span class="label">Link expires in</span>
+          <span class="value">${expiry}</span>
+        </div>
+      </div>
+
+      <div class="alert-banner alert-warning" style="margin-top:20px;">
+        <strong>Didn't request this?</strong> You can safely ignore this email.
+        Your password will not be changed unless you click the link above.
+        Never share this link with anyone.
+      </div>
+    </div>
+    ${htmlFooter()}
+  `);
+
+  return sendEmail({
+    to, subject, html,
+    text: `Password Reset\n\nHi ${name},\n\nReset your password: ${resetUrl}\n\nExpires in: ${expiry}`
+  });
+}
+
+/* ─────────────────────────────────────────────────────────────────────────── *
+ * WEEKLY HR REPORT                                                             *
+ * ─────────────────────────────────────────────────────────────────────────── */
+async function sendWeeklyHRReport({ to, hrAdmin, reportData, tenantName }) {
+  const subject = `Weekly Wellness Report — ${tenantName}`;
+  const reportDate = new Date().toLocaleDateString('en-IN', { dateStyle: 'long' });
+
+  const alertRows = (reportData.recentAlerts || []).slice(0, 5).map(a => `
+    <tr style="border-bottom: 1px solid #f3f0ff;">
+      <td style="padding:12px 0; font-size:14px; color:#374151;">${a.employeeName}</td>
+      <td style="padding:12px 0; font-size:14px;">
+        <span class="tag tag-${a.level}">${a.level?.toUpperCase()}</span>
+      </td>
+      <td style="padding:12px 0; font-size:14px; color:#6b7280;">${a.status}</td>
+    </tr>
+  `).join('');
+
+  const html = wrapHtml(`
+    ${htmlHeader(`Weekly Report · ${tenantName}`, reportDate)}
+    <div class="body">
+      <p class="greeting">Hi <strong>${hrAdmin.firstName}</strong>, here's your weekly wellness summary.</p>
+
+      <div class="stat-grid">
         <div class="stat-box">
           <div class="stat-value">${reportData.totalAssessments || 0}</div>
           <div class="stat-label">Assessments</div>
@@ -438,175 +564,136 @@ class EmailService {
           <div class="stat-label">Active Alerts</div>
         </div>
         <div class="stat-box">
-          <div class="stat-value">${reportData.avgWellnessScore || 'N/A'}</div>
-          <div class="stat-label">Avg Wellness Score</div>
+          <div class="stat-value">${reportData.avgWellnessScore || '—'}</div>
+          <div class="stat-label">Avg Score</div>
         </div>
       </div>
 
-      <h3>Recent Alerts</h3>
-      <table class="table">
-        <tr>
-          <th>Employee</th>
-          <th>Alert Level</th>
-          <th>Status</th>
-        </tr>
-        ${(reportData.recentAlerts || []).slice(0, 5).map(alert => `
-          <tr>
-            <td>${alert.employeeName}</td>
-            <td>${alert.level.toUpperCase()}</td>
-            <td>${alert.status}</td>
-          </tr>
-        `).join('')}
-      </table>
+      ${alertRows ? `
+        <h3 style="font-size:15px; font-weight:600; color:#1e1b2e; margin-bottom:4px;">Recent Alerts</h3>
+        <table style="width:100%; border-collapse:collapse; margin:16px 0;">
+          <thead>
+            <tr style="border-bottom: 2px solid #ede9fe;">
+              <th style="text-align:left; padding-bottom:10px; font-size:13px; color:#7c3aed; font-weight:600;">Employee</th>
+              <th style="text-align:left; padding-bottom:10px; font-size:13px; color:#7c3aed; font-weight:600;">Level</th>
+              <th style="text-align:left; padding-bottom:10px; font-size:13px; color:#7c3aed; font-weight:600;">Status</th>
+            </tr>
+          </thead>
+          <tbody>${alertRows}</tbody>
+        </table>` : ''}
 
-      <p>For detailed analytics and employee data, log into the platform:</p>
-
-      <center>
-        <a href="${process.env.PLATFORM_URL}/analytics" class="button">View Dashboard</a>
-      </center>
-
-      <div class="footer">
-        <p>Powered by VocaCore™ | ${this.brandName}</p>
-        <p>This report is automatically generated weekly.</p>
+      <div class="btn-center" style="margin-top:32px;">
+        <a href="${PLATFORM_URL}/analytics" class="btn">View Full Dashboard →</a>
       </div>
     </div>
-  </div>
-</body>
-</html>`;
+    ${htmlFooter()}
+  `);
 
-    const text = `Weekly Wellness Report\n\n${tenantName} | ${reportDate}\n\nTotal Assessments: ${reportData.totalAssessments || 0}\nActive Alerts: ${reportData.activeAlerts || 0}\nAverage Wellness Score: ${reportData.avgWellnessScore || 'N/A'}\n\nView Dashboard: ${process.env.PLATFORM_URL}/analytics`;
-
-    return this.sendEmail({
-      to,
-      subject,
-      html,
-      text
-    });
-  }
-
-  /**
-   * Send consultation reminder email
-   */
-  async sendConsultationReminder({ to, consultation, minutesBefore }) {
-    const subject = `Reminder: Your Consultation is in ${minutesBefore} minutes`;
-    const consultationTime = new Date(consultation.scheduledAt).toLocaleTimeString('en-IN', {
-      timeStyle: 'short',
-      timeZone: 'Asia/Kolkata'
-    });
-
-    const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style>
-    body { font-family: Arial, sans-serif; color: #333; }
-    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { background-color: #0066cc; color: white; padding: 20px; text-align: center; border-radius: 4px 4px 0 0; }
-    .content { background-color: #f9f9f9; padding: 30px; border: 1px solid #ddd; border-top: none; }
-    .alert-box { background-color: #e8f4f8; padding: 15px; border-left: 4px solid #0066cc; margin: 15px 0; }
-    .button { display: inline-block; background-color: #0066cc; color: white; padding: 12px 30px; text-decoration: none; border-radius: 4px; margin: 20px 0; }
-    .footer { font-size: 12px; color: #666; margin-top: 30px; text-align: center; border-top: 1px solid #ddd; padding-top: 20px; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>Consultation Reminder</h1>
-    </div>
-    <div class="content">
-      <div class="alert-box">
-        <strong>Your consultation is in ${minutesBefore} minutes!</strong><br>
-        Time: ${consultationTime} IST
-      </div>
-
-      <p>Get ready for your wellness consultation. ${consultation.mode === 'online' ? 'Make sure you have a quiet space and a good internet connection.' : 'Please arrive on time at the scheduled location.'}</p>
-
-      ${consultation.meetLink ? `
-        <center>
-          <a href="${consultation.meetLink}" class="button">Join Meeting</a>
-        </center>
-      ` : ''}
-
-      <p>If you need to reschedule, please contact your clinician as soon as possible.</p>
-
-      <div class="footer">
-        <p>Powered by VocaCore™ | ${this.brandName}</p>
-      </div>
-    </div>
-  </div>
-</body>
-</html>`;
-
-    const text = `Consultation Reminder\n\nYour consultation is in ${minutesBefore} minutes!\nTime: ${consultationTime} IST\n\n${consultation.meetLink ? `Meeting Link: ${consultation.meetLink}` : 'Please arrive on time.'}`;
-
-    return this.sendEmail({
-      to,
-      subject,
-      html,
-      text
-    });
-  }
-
-  /**
-   * Send alert escalation notification
-   */
-  async sendAlertEscalationNotification({ to, alert, employee, reason }) {
-    const subject = `Alert Escalation: ${employee.firstName} ${employee.lastName}`;
-
-    const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style>
-    body { font-family: Arial, sans-serif; color: #333; }
-    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { background-color: #d32f2f; color: white; padding: 20px; text-align: center; border-radius: 4px 4px 0 0; }
-    .content { background-color: #f9f9f9; padding: 30px; border: 1px solid #ddd; border-top: none; }
-    .alert-box { background-color: #ffebee; border-left: 4px solid #d32f2f; padding: 15px; margin: 15px 0; }
-    .button { display: inline-block; background-color: #d32f2f; color: white; padding: 12px 30px; text-decoration: none; border-radius: 4px; margin: 20px 0; }
-    .footer { font-size: 12px; color: #666; margin-top: 30px; text-align: center; border-top: 1px solid #ddd; padding-top: 20px; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>Alert Escalation</h1>
-    </div>
-    <div class="content">
-      <p>An alert has been escalated to you for immediate attention.</p>
-
-      <div class="alert-box">
-        <strong>Employee:</strong> ${employee.firstName} ${employee.lastName}<br>
-        <strong>Alert Level:</strong> ${alert.alertLevel.toUpperCase()}<br>
-        <strong>Escalation Reason:</strong> ${reason}
-      </div>
-
-      <p>Please review this case and take appropriate action as per your protocols.</p>
-
-      <center>
-        <a href="${process.env.PLATFORM_URL}/alerts/${alert._id}" class="button">Review Alert</a>
-      </center>
-
-      <div class="footer">
-        <p>Powered by VocaCore™ | ${this.brandName}</p>
-        <p>This is a confidential alert requiring immediate attention.</p>
-      </div>
-    </div>
-  </div>
-</body>
-</html>`;
-
-    const text = `Alert Escalation\n\nEmployee: ${employee.firstName} ${employee.lastName}\nAlert Level: ${alert.alertLevel.toUpperCase()}\nReason: ${reason}\n\nReview Alert: ${process.env.PLATFORM_URL}/alerts/${alert._id}`;
-
-    return this.sendEmail({
-      to,
-      subject,
-      html,
-      text
-    });
-  }
+  return sendEmail({
+    to, subject, html,
+    text: `Weekly Report — ${tenantName}\nAssessments: ${reportData.totalAssessments || 0}\nAlerts: ${reportData.activeAlerts || 0}`
+  });
 }
 
-module.exports = new EmailService();
+/* ─────────────────────────────────────────────────────────────────────────── *
+ * CONSULTATION REMINDER                                                        *
+ * ─────────────────────────────────────────────────────────────────────────── */
+async function sendConsultationReminder({ to, consultation, minutesBefore }) {
+  const subject = `Reminder: Your consultation starts in ${minutesBefore} minutes`;
+  const time = new Date(consultation.scheduledAt).toLocaleTimeString('en-IN', {
+    timeStyle: 'short', timeZone: 'Asia/Kolkata'
+  });
+
+  const html = wrapHtml(`
+    ${htmlHeader(`Your session starts in ${minutesBefore} min`, time + ' IST')}
+    <div class="body">
+      <p class="greeting">Your wellness consultation is about to begin!</p>
+
+      ${consultation.mode === 'online' ? `
+        <div class="alert-banner alert-info" style="margin-bottom:24px;">
+          Make sure you're in a quiet, private space with a stable internet connection.
+        </div>
+        <div class="btn-center">
+          <a href="${consultation.meetLink}" class="btn">Join Meeting Now →</a>
+        </div>` : `
+        <div class="alert-banner alert-info">
+          Please head to the scheduled location on time.
+          ${consultation.location ? `<br><strong>Location:</strong> ${consultation.location}` : ''}
+        </div>`}
+    </div>
+    ${htmlFooter()}
+  `);
+
+  return sendEmail({
+    to, subject, html,
+    text: `Your consultation starts in ${minutesBefore} minutes at ${time} IST${consultation.meetLink ? `\nJoin: ${consultation.meetLink}` : ''}`
+  });
+}
+
+/* ─────────────────────────────────────────────────────────────────────────── *
+ * ALERT ESCALATION                                                             *
+ * ─────────────────────────────────────────────────────────────────────────── */
+async function sendAlertEscalationNotification({ to, alert, employee, reason }) {
+  const subject = `ESCALATED: ${employee.firstName} ${employee.lastName} — Immediate attention needed`;
+
+  const html = wrapHtml(`
+    <div class="header" style="background: linear-gradient(135deg, #7f1d1d 0%, #dc2626 100%);">
+      <div class="logo-badge">
+        <span class="logo-icon">V</span>
+        <span class="logo-text">Vocalysis &nbsp;·&nbsp; ${BRAND_NAME}</span>
+      </div>
+      <h1>Alert Escalated</h1>
+      <p>This case requires your immediate review</p>
+    </div>
+    <div class="body">
+      <div class="alert-banner alert-danger">
+        <strong>This alert has been escalated to you.</strong> Please review and take action as per your protocols.
+      </div>
+
+      <div class="card">
+        <div class="card-row">
+          <span class="label">Employee</span>
+          <span class="value">${employee.firstName} ${employee.lastName}</span>
+        </div>
+        <div class="card-row">
+          <span class="label">Alert level</span>
+          <span class="value">
+            <span class="tag tag-critical">${(alert.alertLevel || 'CRITICAL').toUpperCase()}</span>
+          </span>
+        </div>
+        <div class="card-row">
+          <span class="label">Escalation reason</span>
+          <span class="value">${reason}</span>
+        </div>
+      </div>
+
+      <div class="btn-center">
+        <a href="${PLATFORM_URL}/alerts/${alert._id}" class="btn">Review Case →</a>
+      </div>
+
+      <p style="font-size:13px; color:#9ca3af; margin-top:16px; line-height:1.6;">
+        This alert is confidential. Handle in accordance with your organisation's safeguarding policies.
+      </p>
+    </div>
+    ${htmlFooter()}
+  `);
+
+  return sendEmail({
+    to, subject, html,
+    text: `ESCALATED: ${employee.firstName} ${employee.lastName}\nReason: ${reason}\n${PLATFORM_URL}/alerts/${alert._id}`
+  });
+}
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+
+module.exports = {
+  sendEmail,
+  sendWelcomeEmail,
+  sendAssessmentInvite,
+  sendAlertNotification,
+  sendConsultationInvite,
+  sendPasswordReset,
+  sendWeeklyHRReport,
+  sendConsultationReminder,
+  sendAlertEscalationNotification,
+};

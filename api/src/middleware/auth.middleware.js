@@ -15,7 +15,7 @@ const verifyAccessToken = (req, res, next) => {
     }
 
     const token = authHeader.substring(7);
-    const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET || 'access-secret');
+    const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET || 'access-secret');
 
     req.user = {
       userId: decoded.userId,

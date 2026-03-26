@@ -1,6 +1,6 @@
 {
   "name": "vocalysis-api",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Vocalysis API — Cittaa Health Services",
   "main": "src/server.js",
   "scripts": {
@@ -38,6 +38,7 @@
     "pdfkit": "^0.14.0",
     "qrcode": "^1.5.3",
     "rate-limit-redis": "^4.2.0",
+    "resend": "^6.9.4",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.0",
     "uuid": "^9.0.1",

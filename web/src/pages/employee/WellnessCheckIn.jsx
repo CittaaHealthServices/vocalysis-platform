@@ -115,7 +115,7 @@ export const WellnessCheckIn = () => {
               Please tell us how you've been feeling recently. What's going well, and what challenges are you facing?
             </p>
           </div>
-          <WaveformRecorder onRecordingComplete={handleRecordingComplete} minDuration={30} maxDuration={300} />
+          <WaveformRecorder onRecordingComplete={handleRecordingComplete} minDuration={30} maxDuration={120} />
         </Card>
       )}
 

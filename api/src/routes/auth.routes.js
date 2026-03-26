@@ -17,138 +17,133 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 
 // Constants
 const LOGIN_ATTEMPTS_LIMIT = 5;
-const LOCKOUT_DURATION = 15 * 60 * 1000; // 15 minutes
-const RESET_TOKEN_EXPIRY = 15 * 60; // 15 minutes
+const LOCKOUT_DURATION = 15 * 60; // seconds
+const ACCESS_TOKEN_EXPIRY = '15m';
+const ACCESS_TOKEN_EXPIRY_SECONDS = 900;
+const REFRESH_TOKEN_EXPIRY = '7d';
+
+// JWT secrets — consistent with auth.middleware.js
+const JWT_ACCESS_SECRET  = process.env.JWT_ACCESS_SECRET  || process.env.JWT_SECRET  || 'access-secret';
+const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'refresh-secret';
+
+/**
+ * Helper: validate password complexity
+ */
+function _isValidPassword(password) {
+  if (!password || password.length < 10) return false;
+  if (!/[A-Z]/.test(password)) return false;
+  if (!/[a-z]/.test(password)) return false;
+  if (!/[0-9]/.test(password)) return false;
+  if (!/[!@#$%^&*]/.test(password)) return false;
+  return true;
+}
+
+/**
+ * Helper: build safe public user object
+ */
+function safeUser(user) {
+  return {
+    id:        user._id,
+    userId:    user.userId,
+    email:     user.email,
+    firstName: user.firstName,
+    lastName:  user.lastName,
+    role:      user.role,
+    tenantId:  user.tenantId,
+  };
+}
+
+/* ─────────────────────────────────────────────────────────────────────────── */
 
 /**
  * POST /auth/register
- * Create new user (role-based creation restrictions)
  */
 router.post('/register', requireAuth, async (req, res) => {
   try {
     const { email, firstName, lastName, role, tenantId, password } = req.body;
-    const requestId = req.requestId;
-    const userRole = req.user.role;
-    const userId = req.user._id;
+    const requestId    = req.requestId;
+    const userRole     = req.user.role;
+    const userId       = req.user.userId;
     const userTenantId = req.user.tenantId;
 
-    // Validate input
     if (!email || !firstName || !lastName || !role || !password) {
-      return res.status(400).json({ error: 'Missing required fields' });
+      return res.status(400).json({ success: false, message: 'Missing required fields' });
     }
 
-    // Validate password complexity
-    if (!this._isValidPassword(password)) {
+    if (!_isValidPassword(password)) {
       return res.status(400).json({
-        error: 'Password must be at least 10 characters with uppercase, lowercase, number, and special character'
+        success: false,
+        message: 'Password must be at least 10 characters with uppercase, lowercase, number, and special character'
       });
     }
 
-    // Authorization checks
-    if (userRole === 'CITTAA_SUPER_ADMIN') {
-      // Can create COMPANY_ADMIN
-      if (role !== 'COMPANY_ADMIN') {
-        return res.status(403).json({ error: 'Super admin can only create company admins' });
-      }
-      if (!tenantId) {
-        return res.status(400).json({ error: 'tenantId required for creating company admin' });
-      }
-    } else if (userRole === 'COMPANY_ADMIN') {
-      // Can create HR_ADMIN
-      if (role !== 'HR_ADMIN' && role !== 'CLINICIAN') {
-        return res.status(403).json({ error: 'Company admin can only create HR admin or clinician' });
-      }
-      // Use current user's tenant
-      const finalTenantId = tenantId || userTenantId;
-      if (finalTenantId !== userTenantId.toString()) {
-        return res.status(403).json({ error: 'Cannot create users in other tenants' });
-      }
-    } else {
-      return res.status(403).json({ error: 'Insufficient permissions to create users' });
+    const allowedRoles = {
+      CITTAA_SUPER_ADMIN: ['COMPANY_ADMIN', 'CITTAA_SUPER_ADMIN'],
+      COMPANY_ADMIN:      ['HR_ADMIN', 'SENIOR_CLINICIAN', 'CLINICAL_PSYCHOLOGIST'],
+    };
+
+    if (!allowedRoles[userRole]) {
+      return res.status(403).json({ success: false, message: 'Insufficient permissions to create users' });
+    }
+    if (!allowedRoles[userRole].includes(role)) {
+      return res.status(403).json({ success: false, message: `Your role cannot create a ${role} user` });
+    }
+    if (userRole === 'CITTAA_SUPER_ADMIN' && !tenantId) {
+      return res.status(400).json({ success: false, message: 'tenantId required when creating company admins' });
     }
 
-    // Check if user already exists
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(409).json({ error: 'User with this email already exists' });
+    const finalTenantId = tenantId || userTenantId;
+
+    const existing = await User.findOne({ email: email.toLowerCase() });
+    if (existing) {
+      return res.status(409).json({ success: false, message: 'User with this email already exists' });
     }
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const tempPassword = crypto.randomBytes(4).toString('hex');
-
-    // Create user
     const newUser = new User({
-      email,
+      email:       email.toLowerCase(),
       firstName,
       lastName,
-      password: hashedPassword,
       role,
-      tenantId: tenantId || userTenantId,
-      isActive: true,
+      tenantId:    finalTenantId,
+      isActive:    true,
+      isEmailVerified: false,
       loginAttempts: 0,
-      lastLoginAt: null,
-      createdBy: userId,
-      createdAt: new Date()
+      consentRecord: { consentGiven: false, dataProcessingConsent: false },
+      notificationPreferences: { emailAlerts: true, inAppAlerts: true },
     });
-
+    await newUser.setPassword(password);
     await newUser.save();
 
-    // Log audit
     await auditService.log({
-      userId,
-      tenantId: tenantId || userTenantId,
-      role: userRole,
-      action: 'USER_CREATED',
-      targetResource: 'User',
-      targetId: newUser._id,
-      ipAddress: req.ip,
-      userAgent: req.get('user-agent'),
-      requestId,
+      userId, tenantId: finalTenantId, role: userRole,
+      action: 'USER_CREATED', targetResource: 'User', targetId: newUser._id,
+      ipAddress: req.ip, userAgent: req.get('user-agent'), requestId,
       changeSnapshot: { email, role, firstName, lastName }
-    });
+    }).catch(() => {});
 
-    // Send welcome email
-    const tenant = await Tenant.findById(tenantId || userTenantId);
+    const tenant = await Tenant.findOne({ tenantId: finalTenantId });
     await emailService.sendWelcomeEmail({
       to: email,
       name: firstName,
-      loginUrl: `${process.env.PLATFORM_URL}/login`,
-      tempPassword,
-      companyName: tenant?.name || 'Vocalysis'
+      loginUrl: `${process.env.PLATFORM_URL || 'https://striking-bravery-production-c13e.up.railway.app'}/login`,
+      tempPassword: password,
+      companyName: tenant?.displayName || tenant?.legalName || 'Vocalysis'
     }).catch(err => logger.error('Welcome email failed', { error: err.message }));
 
     res.status(201).json({
-      message: 'User created successfully',
-      user: {
-        id: newUser._id,
-        email: newUser.email,
-        firstName: newUser.firstName,
-        lastName: newUser.lastName,
-        role: newUser.role
-      }
+      success: true,
+      data: { user: safeUser(newUser), message: 'User created successfully' }
     });
   } catch (err) {
     logger.error('User registration failed', { error: err.message });
-    await auditService.log({
-      userId: req.user._id,
-      tenantId: req.user.tenantId,
-      role: req.user.role,
-      action: 'USER_CREATED',
-      targetResource: 'User',
-      ipAddress: req.ip,
-      userAgent: req.get('user-agent'),
-      requestId: req.requestId,
-      outcome: 'failure',
-      errorMessage: err.message
-    });
-    res.status(500).json({ error: 'Registration failed' });
+    res.status(500).json({ success: false, message: 'Registration failed' });
   }
 });
 
+/* ─────────────────────────────────────────────────────────────────────────── */
+
 /**
  * POST /auth/login
- * Email + password login with lockout protection
  */
 router.post('/login', async (req, res) => {
   try {
@@ -156,74 +151,60 @@ router.post('/login', async (req, res) => {
     const requestId = req.requestId;
 
     if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password required' });
+      return res.status(400).json({ success: false, message: 'Email and password required' });
     }
 
-    // Check lockout
-    const lockoutKey = `login_lockout:${email}`;
-    const isLocked = await redis.get(lockoutKey);
+    // Rate-limit / lockout check
+    const lockoutKey = `login_lockout:${email.toLowerCase()}`;
+    const isLocked = await redis.get(lockoutKey).catch(() => null);
     if (isLocked) {
-      await auditService.log({
-        tenantId: null,
-        action: 'LOGIN_ATTEMPT',
-        targetResource: 'User',
-        ipAddress: req.ip,
-        userAgent: req.get('user-agent'),
-        requestId,
-        outcome: 'failure',
-        errorMessage: 'Account temporarily locked due to failed login attempts'
+      return res.status(429).json({
+        success: false,
+        code: 'ACCOUNT_LOCKED',
+        message: 'Account temporarily locked. Try again in 15 minutes.'
       });
-      return res.status(429).json({ error: 'Account temporarily locked. Try again later.' });
     }
 
-    // Find user
-    const user = await User.findOne({ email });
+    // IMPORTANT: select passwordHash (field has select:false in schema)
+    const user = await User.findOne({ email: email.toLowerCase() }).select('+passwordHash +salt +mfaSecret');
     if (!user) {
-      return res.status(401).json({ error: 'Invalid email or password' });
+      return res.status(401).json({ success: false, message: 'Invalid email or password' });
     }
 
-    // Check password
-    const isValidPassword = await bcrypt.compare(password, user.password);
+    // Verify password using model method (handles passwordHash field)
+    const isValidPassword = await user.comparePassword(password);
     if (!isValidPassword) {
-      const attemptsKey = `login_attempts:${email}`;
-      let attempts = await redis.get(attemptsKey);
-      attempts = (attempts ? parseInt(attempts) : 0) + 1;
+      const attemptsKey = `login_attempts:${email.toLowerCase()}`;
+      const prev = parseInt(await redis.get(attemptsKey).catch(() => '0') || '0');
+      const attempts = prev + 1;
 
       if (attempts >= LOGIN_ATTEMPTS_LIMIT) {
-        await redis.setex(lockoutKey, LOCKOUT_DURATION / 1000, '1');
-        logger.warn('User locked out due to failed login attempts', { email });
+        await redis.setex(lockoutKey, LOCKOUT_DURATION, '1').catch(() => {});
       } else {
-        await redis.setex(attemptsKey, 3600, attempts.toString());
+        await redis.setex(attemptsKey, 3600, String(attempts)).catch(() => {});
       }
 
       await auditService.log({
-        userId: user._id,
-        tenantId: user.tenantId,
-        role: user.role,
-        action: 'LOGIN_ATTEMPT',
-        targetResource: 'User',
-        targetId: user._id,
-        ipAddress: req.ip,
-        userAgent: req.get('user-agent'),
-        requestId,
-        outcome: 'failure',
-        errorMessage: 'Invalid password'
-      });
+        userId: user._id, tenantId: user.tenantId, role: user.role,
+        action: 'LOGIN_ATTEMPT', targetResource: 'User', targetId: user._id,
+        ipAddress: req.ip, userAgent: req.get('user-agent'), requestId,
+        outcome: 'failure', errorMessage: 'Invalid password'
+      }).catch(() => {});
 
-      return res.status(401).json({ error: 'Invalid email or password' });
+      return res.status(401).json({ success: false, message: 'Invalid email or password' });
     }
 
-    // Check if user is active
     if (!user.isActive) {
-      return res.status(403).json({ error: 'Account is deactivated' });
+      return res.status(403).json({ success: false, message: 'Account is deactivated' });
     }
 
-    // Check MFA if enabled
+    // MFA check
     if (user.mfaEnabled && !totpCode) {
       return res.status(403).json({
-        error: 'MFA required',
+        success: false,
+        code: 'MFA_REQUIRED',
+        message: 'Two-factor authentication required',
         mfaRequired: true,
-        needsTotpCode: true
       });
     }
 
@@ -231,442 +212,388 @@ router.post('/login', async (req, res) => {
       const isValidTotp = otplib.authenticator.check(totpCode, user.mfaSecret);
       if (!isValidTotp) {
         await auditService.log({
-          userId: user._id,
-          tenantId: user.tenantId,
-          role: user.role,
-          action: 'LOGIN_ATTEMPT',
-          targetResource: 'User',
-          targetId: user._id,
-          ipAddress: req.ip,
-          userAgent: req.get('user-agent'),
-          requestId,
-          outcome: 'failure',
-          errorMessage: 'Invalid TOTP code'
-        });
-        return res.status(401).json({ error: 'Invalid TOTP code' });
+          userId: user._id, tenantId: user.tenantId, role: user.role,
+          action: 'LOGIN_ATTEMPT', targetResource: 'User', targetId: user._id,
+          ipAddress: req.ip, userAgent: req.get('user-agent'), requestId,
+          outcome: 'failure', errorMessage: 'Invalid TOTP code'
+        }).catch(() => {});
+        return res.status(401).json({ success: false, message: 'Invalid TOTP code' });
       }
     }
 
-    // Clear login attempts
-    await redis.del(`login_attempts:${email}`);
+    // Success — clear failed attempts
+    await redis.del(`login_attempts:${email.toLowerCase()}`).catch(() => {});
 
-    // Update last login
-    user.lastLoginAt = new Date();
+    user.lastLoginAt  = new Date();
     user.loginAttempts = 0;
     await user.save();
 
-    // Generate tokens
+    const jti = uuidv4();
     const accessToken = jwt.sign(
-      {
-        userId: user._id,
-        email: user.email,
-        role: user.role,
-        tenantId: user.tenantId
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: '15m' }
+      { userId: user.userId, email: user.email, role: user.role, tenantId: user.tenantId, jti },
+      JWT_ACCESS_SECRET,
+      { expiresIn: ACCESS_TOKEN_EXPIRY }
     );
 
     const refreshToken = jwt.sign(
-      {
-        userId: user._id,
-        tenantId: user.tenantId
-      },
-      process.env.JWT_REFRESH_SECRET,
-      { expiresIn: '7d' }
+      { userId: user.userId, tenantId: user.tenantId, jti: uuidv4() },
+      JWT_REFRESH_SECRET,
+      { expiresIn: REFRESH_TOKEN_EXPIRY }
     );
 
-    // Set refresh token as httpOnly cookie
     res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000
+      secure:   process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      maxAge:   7 * 24 * 60 * 60 * 1000
     });
 
     await auditService.log({
-      userId: user._id,
-      tenantId: user.tenantId,
-      role: user.role,
-      action: 'LOGIN_SUCCESS',
-      targetResource: 'User',
-      targetId: user._id,
-      ipAddress: req.ip,
-      userAgent: req.get('user-agent'),
-      requestId
-    });
+      userId: user._id, tenantId: user.tenantId, role: user.role,
+      action: 'LOGIN_SUCCESS', targetResource: 'User', targetId: user._id,
+      ipAddress: req.ip, userAgent: req.get('user-agent'), requestId
+    }).catch(() => {});
 
     res.json({
-      accessToken,
-      user: {
-        id: user._id,
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        role: user.role,
-        tenantId: user.tenantId
+      success: true,
+      data: {
+        accessToken,
+        expiresIn: ACCESS_TOKEN_EXPIRY_SECONDS,
+        user: safeUser(user),
       }
     });
   } catch (err) {
-    logger.error('Login failed', { error: err.message });
-    res.status(500).json({ error: 'Login failed' });
+    logger.error('Login failed', { error: err.message, stack: err.stack });
+    res.status(500).json({ success: false, message: 'Login failed' });
   }
 });
 
+/* ─────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * POST /auth/verify
+ * Re-issue access token from existing refresh cookie (called on page load)
+ */
+router.post('/verify', async (req, res) => {
+  try {
+    const refreshToken = req.cookies?.refreshToken;
+    if (!refreshToken) {
+      return res.status(401).json({ success: false, message: 'Not authenticated' });
+    }
+
+    const decoded = jwt.verify(refreshToken, JWT_REFRESH_SECRET);
+    const user    = await User.findOne({ userId: decoded.userId });
+
+    if (!user || !user.isActive) {
+      return res.status(401).json({ success: false, message: 'User not found or inactive' });
+    }
+
+    const jti = uuidv4();
+    const accessToken = jwt.sign(
+      { userId: user.userId, email: user.email, role: user.role, tenantId: user.tenantId, jti },
+      JWT_ACCESS_SECRET,
+      { expiresIn: ACCESS_TOKEN_EXPIRY }
+    );
+
+    res.json({
+      success: true,
+      data: {
+        accessToken,
+        expiresIn: ACCESS_TOKEN_EXPIRY_SECONDS,
+        user: safeUser(user),
+      }
+    });
+  } catch (err) {
+    logger.warn('Verify failed', { error: err.message });
+    res.status(401).json({ success: false, message: 'Not authenticated' });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+
 /**
  * POST /auth/refresh
- * Issue new access token using refresh cookie
  */
 router.post('/refresh', async (req, res) => {
   try {
-    const refreshToken = req.cookies.refreshToken;
+    const refreshToken = req.cookies?.refreshToken;
     if (!refreshToken) {
-      return res.status(401).json({ error: 'Refresh token not found' });
+      return res.status(401).json({ success: false, message: 'Refresh token not found' });
     }
 
-    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
-    const user = await User.findById(decoded.userId);
+    const decoded = jwt.verify(refreshToken, JWT_REFRESH_SECRET);
+    const user    = await User.findOne({ userId: decoded.userId });
 
     if (!user || !user.isActive) {
-      return res.status(401).json({ error: 'User not found or inactive' });
+      return res.status(401).json({ success: false, message: 'User not found or inactive' });
     }
 
-    // Generate new access token
+    const jti = uuidv4();
     const newAccessToken = jwt.sign(
-      {
-        userId: user._id,
-        email: user.email,
-        role: user.role,
-        tenantId: user.tenantId
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: '15m' }
+      { userId: user.userId, email: user.email, role: user.role, tenantId: user.tenantId, jti },
+      JWT_ACCESS_SECRET,
+      { expiresIn: ACCESS_TOKEN_EXPIRY }
     );
 
-    // Rotate refresh token
     const newRefreshToken = jwt.sign(
-      {
-        userId: user._id,
-        tenantId: user.tenantId
-      },
-      process.env.JWT_REFRESH_SECRET,
-      { expiresIn: '7d' }
+      { userId: user.userId, tenantId: user.tenantId, jti: uuidv4() },
+      JWT_REFRESH_SECRET,
+      { expiresIn: REFRESH_TOKEN_EXPIRY }
     );
 
     res.cookie('refreshToken', newRefreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000
+      secure:   process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      maxAge:   7 * 24 * 60 * 60 * 1000
     });
 
-    res.json({ accessToken: newAccessToken });
+    res.json({
+      success: true,
+      data: {
+        accessToken: newAccessToken,
+        expiresIn:   ACCESS_TOKEN_EXPIRY_SECONDS,
+        user: safeUser(user),
+      }
+    });
   } catch (err) {
     logger.error('Token refresh failed', { error: err.message });
-    res.status(401).json({ error: 'Token refresh failed' });
+    res.status(401).json({ success: false, message: 'Token refresh failed' });
   }
 });
 
+/* ─────────────────────────────────────────────────────────────────────────── */
+
 /**
  * POST /auth/logout
- * Blacklist current access token and clear refresh cookie
  */
 router.post('/logout', requireAuth, async (req, res) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
-    const requestId = req.requestId;
 
-    if (token) {
-      // Blacklist token in Redis
+    if (token && req.user?.jti) {
       const decoded = jwt.decode(token);
       const ttl = Math.floor((decoded.exp * 1000 - Date.now()) / 1000);
       if (ttl > 0) {
-        await redis.setex(`blacklisted_token:${token}`, ttl, '1');
+        await redis.setex(`blacklisted_tokens:${req.user.jti}`, ttl, '1').catch(() => {});
       }
     }
 
-    res.clearCookie('refreshToken');
-
-    await auditService.log({
-      userId: req.user._id,
-      tenantId: req.user.tenantId,
-      role: req.user.role,
-      action: 'LOGOUT',
-      targetResource: 'User',
-      targetId: req.user._id,
-      ipAddress: req.ip,
-      userAgent: req.get('user-agent'),
-      requestId
+    res.clearCookie('refreshToken', {
+      httpOnly: true,
+      secure:   process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     });
 
-    res.json({ message: 'Logged out successfully' });
+    await auditService.log({
+      userId: req.user.userId, tenantId: req.user.tenantId, role: req.user.role,
+      action: 'LOGOUT', targetResource: 'User',
+      ipAddress: req.ip, userAgent: req.get('user-agent'), requestId: req.requestId
+    }).catch(() => {});
+
+    res.json({ success: true, data: { message: 'Logged out successfully' } });
   } catch (err) {
     logger.error('Logout failed', { error: err.message });
-    res.status(500).json({ error: 'Logout failed' });
+    res.status(500).json({ success: false, message: 'Logout failed' });
   }
 });
 
+/* ─────────────────────────────────────────────────────────────────────────── */
+
 /**
  * POST /auth/forgot-password
- * Generate password reset token and send email
  */
 router.post('/forgot-password', async (req, res) => {
   try {
     const { email } = req.body;
-    const requestId = req.requestId;
-
     if (!email) {
-      return res.status(400).json({ error: 'Email required' });
+      return res.status(400).json({ success: false, message: 'Email required' });
     }
 
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email: email.toLowerCase() });
     if (!user) {
-      // Don't reveal if email exists for security
-      return res.json({ message: 'If email exists, reset link will be sent' });
+      return res.json({ success: true, data: { message: 'If that email is registered, a reset link has been sent.' } });
     }
 
-    // Generate reset token
-    const resetToken = crypto.randomBytes(32).toString('hex');
-    const resetTokenHash = crypto.createHash('sha256').update(resetToken).digest('hex');
-
-    user.resetPasswordToken = resetTokenHash;
-    user.resetPasswordExpires = new Date(Date.now() + RESET_TOKEN_EXPIRY * 1000);
+    const resetToken = user.generatePasswordResetToken();
     await user.save();
 
-    // Send reset email
-    const resetUrl = `${process.env.PLATFORM_URL}/reset-password?token=${resetToken}`;
+    const platformUrl = process.env.PLATFORM_URL || 'https://striking-bravery-production-c13e.up.railway.app';
+    const resetUrl = `${platformUrl}/reset-password?token=${resetToken}`;
     await emailService.sendPasswordReset({
       to: email,
       name: user.firstName,
       resetUrl,
-      expiresIn: RESET_TOKEN_EXPIRY / 60
+      expiresIn: 60
     }).catch(err => logger.error('Password reset email failed', { error: err.message }));
 
     await auditService.log({
-      userId: user._id,
-      tenantId: user.tenantId,
-      role: user.role,
-      action: 'PASSWORD_RESET_REQUESTED',
-      targetResource: 'User',
-      targetId: user._id,
-      ipAddress: req.ip,
-      userAgent: req.get('user-agent'),
-      requestId
-    });
+      userId: user._id, tenantId: user.tenantId, role: user.role,
+      action: 'PASSWORD_RESET_REQUESTED', targetResource: 'User', targetId: user._id,
+      ipAddress: req.ip, userAgent: req.get('user-agent'), requestId: req.requestId
+    }).catch(() => {});
 
-    res.json({ message: 'If email exists, reset link will be sent' });
+    res.json({ success: true, data: { message: 'If that email is registered, a reset link has been sent.' } });
   } catch (err) {
     logger.error('Forgot password failed', { error: err.message });
-    res.status(500).json({ error: 'Failed to process request' });
+    res.status(500).json({ success: false, message: 'Failed to process request' });
   }
 });
 
+/* ─────────────────────────────────────────────────────────────────────────── */
+
 /**
  * POST /auth/reset-password
- * Validate reset token and set new password
  */
 router.post('/reset-password', async (req, res) => {
   try {
     const { token, password } = req.body;
-    const requestId = req.requestId;
 
     if (!token || !password) {
-      return res.status(400).json({ error: 'Token and password required' });
+      return res.status(400).json({ success: false, message: 'Token and password required' });
     }
 
-    if (!this._isValidPassword(password)) {
+    if (!_isValidPassword(password)) {
       return res.status(400).json({
-        error: 'Password must be at least 10 characters with uppercase, lowercase, number, and special character'
+        success: false,
+        message: 'Password must be at least 10 characters with uppercase, lowercase, number, and special character'
       });
     }
 
-    const resetTokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     const user = await User.findOne({
-      resetPasswordToken: resetTokenHash,
-      resetPasswordExpires: { $gt: new Date() }
+      passwordResetToken:  tokenHash,
+      passwordResetExpiry: { $gt: new Date() },
     });
 
     if (!user) {
-      return res.status(400).json({ error: 'Invalid or expired reset token' });
+      return res.status(400).json({ success: false, message: 'Invalid or expired reset token' });
     }
 
-    // Set new password
-    user.password = await bcrypt.hash(password, 10);
-    user.resetPasswordToken = undefined;
-    user.resetPasswordExpires = undefined;
-    user.loginAttempts = 0;
+    await user.setPassword(password);
+    user.passwordResetToken  = undefined;
+    user.passwordResetExpiry = undefined;
+    user.loginAttempts       = 0;
     await user.save();
 
     await auditService.log({
-      userId: user._id,
-      tenantId: user.tenantId,
-      role: user.role,
-      action: 'PASSWORD_RESET_COMPLETED',
-      targetResource: 'User',
-      targetId: user._id,
-      ipAddress: req.ip,
-      userAgent: req.get('user-agent'),
-      requestId
-    });
+      userId: user._id, tenantId: user.tenantId, role: user.role,
+      action: 'PASSWORD_RESET_COMPLETED', targetResource: 'User', targetId: user._id,
+      ipAddress: req.ip, userAgent: req.get('user-agent'), requestId: req.requestId
+    }).catch(() => {});
 
-    res.json({ message: 'Password reset successfully' });
+    res.json({ success: true, data: { message: 'Password reset successfully' } });
   } catch (err) {
     logger.error('Password reset failed', { error: err.message });
-    res.status(500).json({ error: 'Password reset failed' });
+    res.status(500).json({ success: false, message: 'Password reset failed' });
   }
 });
 
+/* ─────────────────────────────────────────────────────────────────────────── */
+
 /**
  * POST /auth/mfa/setup
- * Generate TOTP secret and QR code
  */
-router.post('/auth/mfa/setup', requireAuth, async (req, res) => {
+router.post('/mfa/setup', requireAuth, async (req, res) => {
   try {
-    const user = req.user;
+    const user = await User.findOne({ userId: req.user.userId });
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
-    // Generate TOTP secret
     const secret = otplib.authenticator.generateSecret();
-    const otpauth_url = otplib.authenticator.keyuri(user.email, 'Vocalysis', secret);
+    const otpauthUrl = otplib.authenticator.keyuri(user.email, 'Vocalysis', secret);
+    const qrCode = await QRCode.toDataURL(otpauthUrl);
 
-    // Generate QR code
-    const qrCode = await QRCode.toDataURL(otpauth_url);
-
-    res.json({
-      secret,
-      qrCode,
-      manualEntryKey: secret
-    });
+    res.json({ success: true, data: { secret, qrCode, manualEntryKey: secret } });
   } catch (err) {
     logger.error('MFA setup failed', { error: err.message });
-    res.status(500).json({ error: 'MFA setup failed' });
+    res.status(500).json({ success: false, message: 'MFA setup failed' });
   }
 });
 
 /**
  * POST /auth/mfa/verify
- * Verify TOTP code and enable MFA
  */
-router.post('/auth/mfa/verify', requireAuth, async (req, res) => {
+router.post('/mfa/verify', requireAuth, async (req, res) => {
   try {
     const { secret, totpCode } = req.body;
-    const requestId = req.requestId;
 
     if (!secret || !totpCode) {
-      return res.status(400).json({ error: 'Secret and TOTP code required' });
+      return res.status(400).json({ success: false, message: 'Secret and TOTP code required' });
     }
 
-    // Verify TOTP code
     const isValid = otplib.authenticator.check(totpCode, secret);
     if (!isValid) {
-      return res.status(400).json({ error: 'Invalid TOTP code' });
+      return res.status(400).json({ success: false, message: 'Invalid TOTP code' });
     }
 
-    // Enable MFA
-    const user = await User.findByIdAndUpdate(
-      req.user._id,
-      {
-        mfaEnabled: true,
-        mfaSecret: secret
-      },
-      { new: true }
-    );
+    await User.findOneAndUpdate({ userId: req.user.userId }, { mfaEnabled: true, mfaSecret: secret });
 
     await auditService.log({
-      userId: user._id,
-      tenantId: user.tenantId,
-      role: user.role,
-      action: 'MFA_ENABLED',
-      targetResource: 'User',
-      targetId: user._id,
-      ipAddress: req.ip,
-      userAgent: req.get('user-agent'),
-      requestId
-    });
+      userId: req.user.userId, tenantId: req.user.tenantId, role: req.user.role,
+      action: 'MFA_ENABLED', targetResource: 'User',
+      ipAddress: req.ip, userAgent: req.get('user-agent'), requestId: req.requestId
+    }).catch(() => {});
 
-    res.json({ message: 'MFA enabled successfully' });
+    res.json({ success: true, data: { message: 'MFA enabled successfully' } });
   } catch (err) {
     logger.error('MFA verification failed', { error: err.message });
-    res.status(500).json({ error: 'MFA verification failed' });
+    res.status(500).json({ success: false, message: 'MFA verification failed' });
   }
 });
 
+/* ─────────────────────────────────────────────────────────────────────────── */
+
 /**
- * POST /auth/google
- * Redirect to Google OAuth consent screen
+ * GET /auth/google
  */
-router.get('/auth/google', requireAuth, (req, res) => {
+router.get('/google', requireAuth, (req, res) => {
   try {
-    const url = googleService.getConnectUrl(req.user._id, req.user.tenantId);
-    res.json({ url });
+    const url = googleService.getConnectUrl(req.user.userId, req.user.tenantId);
+    res.json({ success: true, data: { url } });
   } catch (err) {
     logger.error('Google OAuth URL generation failed', { error: err.message });
-    res.status(500).json({ error: 'Failed to generate OAuth URL' });
+    res.status(500).json({ success: false, message: 'Failed to generate OAuth URL' });
   }
 });
 
 /**
  * GET /auth/google/callback
- * Handle Google OAuth callback
  */
-router.get('/auth/google/callback', async (req, res) => {
+router.get('/google/callback', async (req, res) => {
+  const platformUrl = process.env.PLATFORM_URL || 'https://striking-bravery-production-c13e.up.railway.app';
   try {
     const { code, state } = req.query;
-    const requestId = req.requestId;
-
     if (!code || !state) {
-      return res.status(400).json({ error: 'Missing code or state' });
+      return res.redirect(`${platformUrl}/settings/integrations?google=failed&error=missing_params`);
     }
 
-    // Decode state
     const { userId, tenantId } = JSON.parse(Buffer.from(state, 'base64').toString());
-
-    // Exchange code for tokens
     const tokens = await googleService.exchangeCode(code);
 
-    // Store tokens in user's Google profile
-    const user = await User.findByIdAndUpdate(
-      userId,
+    const user = await User.findOneAndUpdate(
+      { userId },
       {
         googleProfile: {
-          accessToken: tokens.access_token,
-          refreshToken: tokens.refresh_token,
-          expiryDate: tokens.expiry_date,
-          connectedAt: new Date()
+          accessToken:     tokens.access_token,
+          refreshToken:    tokens.refresh_token,
+          tokenExpiry:     tokens.expiry_date ? new Date(tokens.expiry_date) : null,
+          calendarEnabled: true,
         }
       },
       { new: true }
     );
 
     await auditService.log({
-      userId,
-      tenantId,
-      role: user.role,
-      action: 'GOOGLE_CONNECTED',
-      targetResource: 'User',
-      targetId: userId,
-      ipAddress: req.ip,
-      userAgent: req.get('user-agent'),
-      requestId
-    });
+      userId, tenantId, role: user?.role,
+      action: 'GOOGLE_CONNECTED', targetResource: 'User',
+      ipAddress: req.ip, userAgent: req.get('user-agent'), requestId: req.requestId
+    }).catch(() => {});
 
-    // Redirect to success page or return token
-    res.redirect(`${process.env.PLATFORM_URL}/settings/integrations?google=connected`);
+    res.redirect(`${platformUrl}/settings/integrations?google=connected`);
   } catch (err) {
     logger.error('Google OAuth callback failed', { error: err.message });
-    res.redirect(`${process.env.PLATFORM_URL}/settings/integrations?google=failed&error=${err.message}`);
+    res.redirect(`${platformUrl}/settings/integrations?google=failed&error=${encodeURIComponent(err.message)}`);
   }
 });
-
-/**
- * Helper: Validate password complexity
- */
-function _isValidPassword(password) {
-  if (password.length < 10) return false;
-  if (!/[A-Z]/.test(password)) return false;
-  if (!/[a-z]/.test(password)) return false;
-  if (!/[0-9]/.test(password)) return false;
-  if (!/[!@#$%^&*]/.test(password)) return false;
-  return true;
-}
 
 module.exports = router;
