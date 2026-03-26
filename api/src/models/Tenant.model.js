@@ -125,6 +125,38 @@ const tenantSchema = new mongoose.Schema(
       default: 'onboarding',
       index: true,
     },
+
+    /* ── 14-Day Trial ────────────────────────────────────────────────── */
+    trial: {
+      isActive:    { type: Boolean, default: false },
+      startDate:   Date,
+      endDate:     Date,
+      durationDays:{ type: Number, default: 14 },
+      // Emails of the specific HR admins / employees invited into the trial
+      invitedEmails: [{ type: String, lowercase: true, trim: true }],
+      // Max number of invited users allowed (HR + employees combined)
+      maxUsers:    { type: Number, default: 20 },
+      // Roles allowed during trial (HR and/or employees)
+      allowedRoles:{ type: [String], default: ['HR_ADMIN', 'EMPLOYEE'] },
+      // Who started the trial (Cittaa admin userId)
+      startedBy:   String,
+      // Whether the trial has been converted to a paid plan
+      converted:   { type: Boolean, default: false },
+      convertedAt: Date,
+      // Reminder emails sent
+      reminderSentAt: {
+        day7:  Date,
+        day12: Date,
+        day14: Date,
+      },
+    },
+
+    /* ── Allowed email domains for Google Sign-In ─────────────────────── */
+    settings: {
+      allowedEmailDomains: [{ type: String, lowercase: true, trim: true }],
+      requireEmailDomain:  { type: Boolean, default: false },
+      selfServiceEnabled:  { type: Boolean, default: false },
+    },
     onboardedBy: String,
     onboardedAt: Date,
     suspensionReason: String,

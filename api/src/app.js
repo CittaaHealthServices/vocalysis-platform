@@ -8,13 +8,14 @@ const logger = require('./utils/logger');
 const { requireAuth, requireRole } = require('./middleware/auth');
 
 // Import routes
-const authRoutes = require('./routes/auth.routes');
+const authRoutes         = require('./routes/auth.routes');
 const consultationRoutes = require('./routes/consultations.routes');
-const sessionRoutes = require('./routes/sessions.routes');
-const employeeRoutes = require('./routes/employees.routes');
-const alertRoutes = require('./routes/alerts.routes');
-const analyticsRoutes = require('./routes/analytics.routes');
-const tenantRoutes = require('./routes/tenants.routes');
+const sessionRoutes      = require('./routes/sessions.routes');
+const employeeRoutes     = require('./routes/employees.routes');
+const alertRoutes        = require('./routes/alerts.routes');
+const analyticsRoutes    = require('./routes/analytics.routes');
+const tenantRoutes       = require('./routes/tenants.routes');
+const trialRoutes        = require('./routes/trial.routes');
 
 // Create Express app
 const app = express();
@@ -84,6 +85,7 @@ app.use('/employees', employeeRoutes);
 app.use('/alerts', alertRoutes);
 app.use('/analytics', analyticsRoutes);
 app.use('/tenants', tenantRoutes);
+app.use('/trial', trialRoutes);
 
 // ============================================================================
 // DOCUMENTATION & ADMIN ROUTES
