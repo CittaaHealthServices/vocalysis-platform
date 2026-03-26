@@ -126,11 +126,38 @@ export const AuthProvider = ({ children }) => {
     })
   }, [getAccessToken, refreshToken, logout])
 
+  // loginWithToken — used by GoogleCallback after OAuth redirect
+  const loginWithToken = useCallback((token, dest = '/') => {
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]))
+      const userData = {
+        _id:       payload.sub || payload.userId,
+        userId:    payload.userId,
+        email:     payload.email,
+        role:      payload.role,
+        tenantId:  payload.tenantId,
+        firstName: payload.firstName,
+        lastName:  payload.lastName,
+      }
+      setAccessToken(token)
+      setUser(userData)
+      setIsAuthenticated(true)
+      const expiresIn = payload.exp ? payload.exp - Math.floor(Date.now() / 1000) : 900
+      scheduleTokenRefresh(expiresIn)
+      // Hard navigate so the router picks up fresh auth state
+      window.location.replace(dest)
+    } catch (err) {
+      console.error('loginWithToken: failed to decode token', err)
+      window.location.replace('/login?error=invalid_token')
+    }
+  }, [scheduleTokenRefresh])
+
   const value = {
     user,
     isAuthenticated,
     isLoading,
     login,
+    loginWithToken,
     logout,
     refreshToken,
     getAccessToken,

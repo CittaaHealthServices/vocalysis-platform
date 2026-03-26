@@ -6,6 +6,7 @@ import { ProtectedRoute } from './ProtectedRoute'
 import Login from '../pages/auth/Login'
 import ForgotPassword from '../pages/auth/ForgotPassword'
 import ResetPassword from '../pages/auth/ResetPassword'
+import GoogleCallback from '../pages/auth/GoogleCallback'
 
 // Layout
 import AppLayout from '../components/layout/AppLayout'
@@ -55,6 +56,7 @@ import APIKeys from '../pages/cittaa-admin/APIKeys'
 import HealthMonitor from '../pages/cittaa-admin/HealthMonitor'
 import AuditLog from '../pages/cittaa-admin/AuditLog'
 import ErrorLog from '../pages/cittaa-admin/ErrorLog'
+import TrialManagement from '../pages/cittaa-admin/TrialManagement'
 
 // CEO Pages
 import CEODashboard from '../pages/ceo/CEODashboard'
@@ -94,6 +96,10 @@ const router = createBrowserRouter([
   {
     path: '/unauthorized',
     element: <Unauthorized />,
+  },
+  {
+    path: '/auth/callback',
+    element: <GoogleCallback />,
   },
 
   // Clinical Routes
@@ -278,11 +284,11 @@ const router = createBrowserRouter([
     ],
   },
 
-  // Cittaa Admin Routes
+  // Cittaa Admin Routes (also accessible by CEO)
   {
     path: '/cittaa-admin',
     element: (
-      <ProtectedRoute requiredRoles={[ROLES.CITTAA_SUPER_ADMIN]}>
+      <ProtectedRoute requiredRoles={[ROLES.CITTAA_SUPER_ADMIN, ROLES.CITTAA_CEO]}>
         <AppLayout />
       </ProtectedRoute>
     ),
@@ -322,6 +328,10 @@ const router = createBrowserRouter([
       {
         path: 'errors',
         element: <ErrorLog />,
+      },
+      {
+        path: 'trials',
+        element: <TrialManagement />,
       },
     ],
   },

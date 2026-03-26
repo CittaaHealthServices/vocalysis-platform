@@ -3,7 +3,7 @@ import clsx from 'clsx'
 import {
   BarChart3, Users, Settings, AlertCircle, BookOpen, Clock,
   Home, FileText, Key, Activity, TrendingUp, Video,
-  DollarSign, Building2, HeartPulse, LogOut,
+  DollarSign, Building2, HeartPulse, LogOut, FlaskConical,
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 
@@ -24,14 +24,16 @@ const SIDEBAR_ITEMS = {
     { label: 'Tenants',           path: '/cittaa-admin/tenants',    icon: Building2  },
     { label: 'Analytics',         path: '/cittaa-admin/analytics',  icon: TrendingUp },
     { label: 'API Keys',          path: '/cittaa-admin/api-keys',   icon: Key        },
+    { label: 'Trial Management',  path: '/cittaa-admin/trials',     icon: FlaskConical},
     { label: 'Health Monitor',    path: '/cittaa-admin/health',     icon: Activity   },
     { label: 'Audit Log',         path: '/cittaa-admin/audit-log',  icon: FileText   },
     { label: 'Error Log',         path: '/cittaa-admin/errors',     icon: AlertCircle},
   ],
   CITTAA_CEO: [
-    { label: 'Executive Overview', path: '/ceo',    icon: BarChart3  },
-    { label: 'Revenue & Growth',   path: '/ceo',    icon: DollarSign },
-    { label: 'Client Health',      path: '/ceo',    icon: Building2  },
+    { label: 'Executive Overview', path: '/ceo',                      icon: BarChart3     },
+    { label: 'Revenue & Growth',   path: '/ceo',                      icon: DollarSign    },
+    { label: 'Client Health',      path: '/ceo',                      icon: Building2     },
+    { label: 'Trial Management',   path: '/cittaa-admin/trials',      icon: FlaskConical  },
   ],
   COMPANY_ADMIN: [
     { label: 'Company Overview', path: '/company',            icon: Home      },
