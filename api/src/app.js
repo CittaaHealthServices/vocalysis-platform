@@ -1,6 +1,7 @@
 const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
 const morgan = require('morgan');
 const { v4: uuidv4 } = require('uuid');
 const swaggerUi = require('swagger-ui-express');
@@ -26,6 +27,9 @@ const app = express();
 
 // Security headers
 app.use(helmet());
+
+// Cookie parser — MUST be before any route that reads req.cookies
+app.use(cookieParser());
 
 // CORS configuration
 const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:3000').split(',');
