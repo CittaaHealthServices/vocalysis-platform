@@ -27,6 +27,11 @@ api.interceptors.request.use(
   }
 )
 
+// Auth endpoints that should NEVER trigger a token refresh retry
+// (avoids infinite loop when refresh/verify themselves return 401)
+const AUTH_ENDPOINTS = ['/auth/login', '/auth/refresh', '/auth/verify', '/auth/logout', '/auth/register']
+const isAuthEndpoint = (url = '') => AUTH_ENDPOINTS.some(p => url.includes(p))
+
 // Response interceptor: handle 401, attempt refresh, retry
 api.interceptors.response.use(
   (response) => {
@@ -35,7 +40,12 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    // Only attempt refresh for non-auth endpoints and only once
+    if (
+      error.response?.status === 401 &&
+      !originalRequest._retry &&
+      !isAuthEndpoint(originalRequest.url)
+    ) {
       originalRequest._retry = true
 
       try {

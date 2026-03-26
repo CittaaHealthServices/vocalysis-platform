@@ -62,6 +62,18 @@ function StatCard({ value, label, delay }) {
   )
 }
 
+// Role → home path mapping (must match router/index.jsx)
+const ROLE_HOME = {
+  CITTAA_SUPER_ADMIN:    '/cittaa-admin',
+  CITTAA_CEO:            '/ceo',
+  COMPANY_ADMIN:         '/company',
+  HR_ADMIN:              '/hr',
+  SENIOR_CLINICIAN:      '/clinical',
+  CLINICAL_PSYCHOLOGIST: '/clinical',
+  EAP_PROVIDER:          '/eap',
+  EMPLOYEE:              '/my',
+}
+
 export const Login = () => {
   const navigate = useNavigate()
   const { login } = useAuth()
@@ -85,7 +97,8 @@ export const Login = () => {
     if (result.requiresMfa) {
       setMfaRequired(true)
     } else if (result.success) {
-      navigate('/my')
+      const home = ROLE_HOME[result.user?.role] || ROLE_HOME[result.role] || '/'
+      navigate(home, { replace: true })
     } else {
       toast.error(result.error || 'Login failed')
     }
@@ -96,7 +109,8 @@ export const Login = () => {
     setIsLoading(true)
     const result = await login(email, password, data.totpCode)
     if (result.success) {
-      navigate('/my')
+      const home = ROLE_HOME[result.user?.role] || ROLE_HOME[result.role] || '/'
+      navigate(home, { replace: true })
     } else {
       toast.error(result.error || 'Invalid TOTP code')
       resetMfa()

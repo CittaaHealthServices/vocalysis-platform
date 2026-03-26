@@ -64,7 +64,7 @@ export const AuthProvider = ({ children }) => {
         setUser(userData)
         setIsAuthenticated(true)
         scheduleTokenRefresh(expiresIn)
-        return { success: true, requiresMfa: false }
+        return { success: true, requiresMfa: false, user: userData }
       }
     } catch (error) {
       const errorMessage = error.error?.message || 'Login failed'
