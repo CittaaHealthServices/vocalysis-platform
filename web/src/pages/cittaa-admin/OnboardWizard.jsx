@@ -3,215 +3,360 @@ import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Card, Button, Input, Select, LoadingScreen } from '../../components/ui'
+import { CheckCircle2, Building2, MapPin, UserCog, CreditCard, ClipboardList, ChevronRight, ChevronLeft, Loader2 } from 'lucide-react'
 import api from '../../services/api'
 import toast from 'react-hot-toast'
 
-const onboardSchema = z.object({
-  companyName: z.string().min(3, 'Company name is required'),
-  industry: z.string().min(1, 'Industry is required'),
-  country: z.string().min(1, 'Country is required'),
-  city: z.string().min(1, 'City is required'),
-  employeeCount: z.string().min(1, 'Employee count is required'),
-  adminName: z.string().min(1, 'Admin name is required'),
-  adminEmail: z.string().email('Valid email is required'),
-  tier: z.string().min(1, 'Subscription tier is required'),
+/* ── Validation schema ── */
+const schema = z.object({
+  companyName:   z.string().min(3,  'Company name must be at least 3 characters'),
+  industry:      z.string().min(1,  'Please select an industry'),
+  employeeCount: z.string().min(1,  'Employee count is required'),
+  country:       z.string().min(1,  'Country is required'),
+  city:          z.string().min(1,  'City is required'),
+  adminName:     z.string().min(2,  'Admin name is required'),
+  adminEmail:    z.string().email('Please enter a valid email address'),
+  tier:          z.string().min(1,  'Please select a plan'),
 })
 
-const STEPS = ['Company Info', 'Location', 'Admin Details', 'Plan Selection', 'Review']
+/* Fields validated per step — so Next only checks the current step */
+const STEP_FIELDS = [
+  ['companyName', 'industry', 'employeeCount'],
+  ['country', 'city'],
+  ['adminName', 'adminEmail'],
+  ['tier'],
+]
 
+const STEPS = [
+  { label: 'Company Info',   icon: Building2     },
+  { label: 'Location',       icon: MapPin        },
+  { label: 'Admin Details',  icon: UserCog       },
+  { label: 'Plan Selection', icon: CreditCard    },
+  { label: 'Review',         icon: ClipboardList },
+]
+
+const INDUSTRIES = [
+  { value: 'technology',         label: 'Technology'            },
+  { value: 'finance_banking',    label: 'Finance & Banking'     },
+  { value: 'healthcare',         label: 'Healthcare'            },
+  { value: 'manufacturing',      label: 'Manufacturing'         },
+  { value: 'retail_ecommerce',   label: 'Retail & E-commerce'   },
+  { value: 'education',          label: 'Education'             },
+  { value: 'logistics',          label: 'Logistics'             },
+  { value: 'media',              label: 'Media & Entertainment' },
+  { value: 'real_estate',        label: 'Real Estate'           },
+  { value: 'pharma_biotech',     label: 'Pharma & Biotech'      },
+  { value: 'consulting',         label: 'Consulting'            },
+  { value: 'other',              label: 'Other'                 },
+]
+
+const PLANS = [
+  { value: 'starter',    label: 'Starter',       price: '₹29,000/mo',  desc: 'Up to 100 employees · Core wellness tools' },
+  { value: 'pro',        label: 'Professional',  price: '₹79,000/mo',  desc: 'Up to 500 employees · Advanced analytics + EAP' },
+  { value: 'enterprise', label: 'Enterprise',    price: 'Custom',      desc: 'Unlimited employees · Dedicated support + SLA' },
+]
+
+/* ── Field components ── */
+function Field({ label, error, children }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <label style={{ fontSize: 13, fontWeight: 600, color: '#4a5568' }}>{label}</label>
+      {children}
+      {error && <span style={{ fontSize: 12, color: '#c0544a', marginTop: 2 }}>{error}</span>}
+    </div>
+  )
+}
+
+function TextInput({ label, error, ...props }) {
+  const [focused, setFocused] = useState(false)
+  return (
+    <Field label={label} error={error}>
+      <input
+        {...props}
+        onFocus={e => { setFocused(true); props.onFocus?.(e) }}
+        onBlur={e => { setFocused(false); props.onBlur?.(e) }}
+        style={{
+          padding: '10px 14px', borderRadius: 8, fontSize: 14, width: '100%',
+          border: `1.5px solid ${error ? '#c0544a' : focused ? '#4a9080' : '#e2eae7'}`,
+          outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box',
+          background: '#fff', transition: 'border-color .15s',
+        }}
+      />
+    </Field>
+  )
+}
+
+function SelectInput({ label, error, options, ...props }) {
+  return (
+    <Field label={label} error={error}>
+      <select
+        {...props}
+        style={{
+          padding: '10px 14px', borderRadius: 8, fontSize: 14, width: '100%',
+          border: `1.5px solid ${error ? '#c0544a' : '#e2eae7'}`,
+          outline: 'none', fontFamily: 'inherit', background: '#fff', cursor: 'pointer',
+        }}
+      >
+        <option value="">— select —</option>
+        {options.map(o => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
+    </Field>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
 export const OnboardWizard = () => {
   const navigate = useNavigate()
-  const [currentStep, setCurrentStep] = useState(0)
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [step, setStep] = useState(0)
+  const [submitting, setSubmitting] = useState(false)
 
   const {
     register,
     handleSubmit,
+    trigger,
     watch,
     formState: { errors },
   } = useForm({
-    resolver: zodResolver(onboardSchema),
-    mode: 'onChange',
+    resolver: zodResolver(schema),
+    mode: 'onTouched',
+    // IMPORTANT: preserve values when steps unmount
+    shouldUnregister: false,
+    defaultValues: {
+      companyName: '', industry: '', employeeCount: '',
+      country: '', city: '', adminName: '', adminEmail: '', tier: '',
+    },
   })
 
+  const values = watch()
+
+  const handleNext = async () => {
+    const valid = await trigger(STEP_FIELDS[step])
+    if (valid) setStep(s => s + 1)
+  }
+
   const onSubmit = async (data) => {
-    setIsSubmitting(true)
+    setSubmitting(true)
     try {
-      await api.post('/tenants', data)
-      toast.success('Company onboarded successfully')
+      await api.post('/tenants', {
+        displayName:   data.companyName,
+        legalName:     data.companyName,
+        industry:      data.industry,
+        employeeCount: Number(data.employeeCount),
+        country:       data.country,
+        city:          data.city,
+        adminName:     data.adminName,
+        adminEmail:    data.adminEmail,
+        tier:          data.tier,
+        status:        'active',
+      })
+      toast.success(`${data.companyName} onboarded successfully!`)
       navigate('/cittaa-admin/tenants')
-    } catch (error) {
-      toast.error('Onboarding failed')
+    } catch (err) {
+      toast.error(err?.error?.message || 'Onboarding failed — please try again')
     } finally {
-      setIsSubmitting(false)
+      setSubmitting(false)
     }
   }
 
-  const handleNext = () => {
-    if (currentStep < STEPS.length - 1) {
-      setCurrentStep(currentStep + 1)
-    }
-  }
-
-  const handlePrev = () => {
-    if (currentStep > 0) {
-      setCurrentStep(currentStep - 1)
-    }
-  }
-
-  const handleFinish = () => {
-    handleSubmit(onSubmit)()
+  const S = {
+    card:    { background: '#fff', borderRadius: 14, border: '1px solid #e2eae7', padding: '32px 36px', boxShadow: '0 2px 8px rgba(0,0,0,.05)', marginBottom: 24 },
+    grid2:   { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 },
+    heading: { fontSize: 20, fontWeight: 700, color: '#1a2e25', margin: '0 0 20px 0' },
+    btnBase: { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 22px', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer', border: 'none', fontFamily: 'inherit', transition: 'opacity .15s' },
+    review:  { background: '#f3f7f5', borderRadius: 10, padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 12 },
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-8">
-      {/* Progress */}
-      <div className="flex items-center justify-between">
-        {STEPS.map((step, idx) => (
-          <div key={idx} className="flex items-center flex-1">
-            <div
-              className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${
-                idx <= currentStep
-                  ? 'bg-cittaa-700 text-white'
-                  : 'bg-gray-200 text-gray-600'
-              }`}
-            >
-              {idx + 1}
+    <div style={{ maxWidth: 680, margin: '0 auto', fontFamily: "'DM Sans','Inter',sans-serif" }}>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+
+      {/* Progress bar */}
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 28, gap: 0 }}>
+        {STEPS.map(({ label }, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', flex: i < STEPS.length - 1 ? 1 : 0 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+              <div style={{
+                width: 34, height: 34, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: i <= step ? '#4a9080' : '#e2eae7',
+                color: i <= step ? '#fff' : '#718096', fontWeight: 700, fontSize: 13,
+                transition: 'background .2s',
+              }}>
+                {i < step ? <CheckCircle2 size={16} /> : i + 1}
+              </div>
+              <span style={{ fontSize: 11, fontWeight: 600, color: i === step ? '#4a9080' : i < step ? '#4a9080' : '#a0aec0', whiteSpace: 'nowrap' }}>
+                {label}
+              </span>
             </div>
-            <p className="text-sm ml-2 text-app font-medium">{step}</p>
-            {idx < STEPS.length - 1 && (
-              <div
-                className={`flex-1 h-1 mx-2 ${
-                  idx < currentStep ? 'bg-cittaa-700' : 'bg-gray-200'
-                }`}
-              />
+            {i < STEPS.length - 1 && (
+              <div style={{ flex: 1, height: 2, background: i < step ? '#4a9080' : '#e2eae7', margin: '0 6px', marginBottom: 18, transition: 'background .2s' }} />
             )}
           </div>
         ))}
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)}>
-        <Card className="p-8 mb-8">
-          {currentStep === 0 && (
-            <div className="space-y-4">
-              <h2 className="text-2xl font-bold text-app mb-6">Company Information</h2>
-              <Input
-                label="Company Name"
-                {...register('companyName')}
+        <div style={S.card}>
+
+          {/* ── Step 0: Company Info ── */}
+          {step === 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <h2 style={S.heading}>Company Information</h2>
+              <TextInput
+                label="Company / Organisation Name *"
+                placeholder="e.g. Acme Technologies Pvt Ltd"
                 error={errors.companyName?.message}
+                {...register('companyName')}
               />
-              <Select
-                label="Industry"
-                options={[
-                  { value: 'tech', label: 'Technology' },
-                  { value: 'finance', label: 'Finance' },
-                  { value: 'healthcare', label: 'Healthcare' },
-                  { value: 'other', label: 'Other' },
-                ]}
-                {...register('industry')}
-                error={errors.industry?.message}
-              />
-              <Input
-                label="Number of Employees"
-                type="number"
-                {...register('employeeCount')}
-                error={errors.employeeCount?.message}
-              />
-            </div>
-          )}
-
-          {currentStep === 1 && (
-            <div className="space-y-4">
-              <h2 className="text-2xl font-bold text-app mb-6">Location</h2>
-              <Input
-                label="Country"
-                {...register('country')}
-                error={errors.country?.message}
-              />
-              <Input
-                label="City"
-                {...register('city')}
-                error={errors.city?.message}
-              />
-            </div>
-          )}
-
-          {currentStep === 2 && (
-            <div className="space-y-4">
-              <h2 className="text-2xl font-bold text-app mb-6">Administrator Details</h2>
-              <Input
-                label="Admin Full Name"
-                {...register('adminName')}
-                error={errors.adminName?.message}
-              />
-              <Input
-                label="Admin Email"
-                type="email"
-                {...register('adminEmail')}
-                error={errors.adminEmail?.message}
-              />
-            </div>
-          )}
-
-          {currentStep === 3 && (
-            <div className="space-y-4">
-              <h2 className="text-2xl font-bold text-app mb-6">Subscription Plan</h2>
-              <Select
-                label="Subscription Tier"
-                options={[
-                  { value: 'starter', label: 'Starter - $500/mo' },
-                  { value: 'pro', label: 'Pro - $1,500/mo' },
-                  { value: 'enterprise', label: 'Enterprise - Custom' },
-                ]}
-                {...register('tier')}
-                error={errors.tier?.message}
-              />
-            </div>
-          )}
-
-          {currentStep === 4 && (
-            <div className="space-y-4">
-              <h2 className="text-2xl font-bold text-app mb-6">Review & Confirm</h2>
-              <div className="space-y-3 p-4 bg-gray-50 rounded-lg">
-                <p><span className="font-medium">Company:</span> {watch('companyName')}</p>
-                <p><span className="font-medium">Industry:</span> {watch('industry')}</p>
-                <p><span className="font-medium">Location:</span> {watch('city')}, {watch('country')}</p>
-                <p><span className="font-medium">Admin:</span> {watch('adminEmail')}</p>
-                <p><span className="font-medium">Plan:</span> {watch('tier')}</p>
+              <div style={S.grid2}>
+                <SelectInput
+                  label="Industry *"
+                  options={INDUSTRIES}
+                  error={errors.industry?.message}
+                  {...register('industry')}
+                />
+                <TextInput
+                  label="Number of Employees *"
+                  type="number"
+                  placeholder="e.g. 250"
+                  error={errors.employeeCount?.message}
+                  {...register('employeeCount')}
+                />
               </div>
             </div>
           )}
-        </Card>
 
-        {/* Navigation */}
-        <div className="flex gap-4">
-          <Button
+          {/* ── Step 1: Location ── */}
+          {step === 1 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <h2 style={S.heading}>Office Location</h2>
+              <div style={S.grid2}>
+                <TextInput
+                  label="Country *"
+                  placeholder="e.g. India"
+                  error={errors.country?.message}
+                  {...register('country')}
+                />
+                <TextInput
+                  label="City *"
+                  placeholder="e.g. Bengaluru"
+                  error={errors.city?.message}
+                  {...register('city')}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* ── Step 2: Admin Details ── */}
+          {step === 2 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <h2 style={S.heading}>Company Administrator</h2>
+              <p style={{ margin: '0 0 4px', color: '#718096', fontSize: 14 }}>
+                This person will manage the company account and invite employees.
+              </p>
+              <TextInput
+                label="Full Name *"
+                placeholder="e.g. Priya Sharma"
+                error={errors.adminName?.message}
+                {...register('adminName')}
+              />
+              <TextInput
+                label="Work Email *"
+                type="email"
+                placeholder="e.g. priya@acme.com"
+                error={errors.adminEmail?.message}
+                {...register('adminEmail')}
+              />
+            </div>
+          )}
+
+          {/* ── Step 3: Plan ── */}
+          {step === 3 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <h2 style={S.heading}>Choose a Plan</h2>
+              {errors.tier && <span style={{ fontSize: 12, color: '#c0544a' }}>{errors.tier.message}</span>}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {PLANS.map(plan => {
+                  const sel = values.tier === plan.value
+                  return (
+                    <label key={plan.value} style={{
+                      display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px',
+                      borderRadius: 10, border: `2px solid ${sel ? '#4a9080' : '#e2eae7'}`,
+                      background: sel ? '#f0f8f5' : '#fff', cursor: 'pointer', transition: 'all .15s',
+                    }}>
+                      <input type="radio" value={plan.value} {...register('tier')} style={{ accentColor: '#4a9080', width: 18, height: 18, flexShrink: 0 }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 700, color: '#1a2e25', fontSize: 15 }}>{plan.label}</div>
+                        <div style={{ color: '#718096', fontSize: 13, marginTop: 2 }}>{plan.desc}</div>
+                      </div>
+                      <div style={{ fontWeight: 700, color: '#4a9080', fontSize: 15, whiteSpace: 'nowrap' }}>{plan.price}</div>
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ── Step 4: Review ── */}
+          {step === 4 && (
+            <div>
+              <h2 style={S.heading}>Review & Confirm</h2>
+              <p style={{ margin: '0 0 16px', color: '#718096', fontSize: 14 }}>Please check the details before completing onboarding.</p>
+              <div style={S.review}>
+                {[
+                  { label: 'Company',     val: values.companyName },
+                  { label: 'Industry',    val: INDUSTRIES.find(i => i.value === values.industry)?.label },
+                  { label: 'Employees',   val: values.employeeCount },
+                  { label: 'Location',    val: values.city && values.country ? `${values.city}, ${values.country}` : null },
+                  { label: 'Admin Name',  val: values.adminName },
+                  { label: 'Admin Email', val: values.adminEmail },
+                  { label: 'Plan',        val: PLANS.find(p => p.value === values.tier)?.label },
+                ].map(({ label, val }) => (
+                  <div key={label} style={{ display: 'flex', gap: 12, fontSize: 14, color: '#2d3748', alignItems: 'flex-start' }}>
+                    <span style={{ fontWeight: 600, color: '#4a5568', minWidth: 110, flexShrink: 0 }}>{label}</span>
+                    <span style={{ color: val ? '#1a2e25' : '#c0544a', fontWeight: val ? 400 : 600 }}>
+                      {val || '⚠ missing — go back and fill this in'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── Navigation ── */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <button
             type="button"
-            variant="secondary"
-            onClick={handlePrev}
-            disabled={currentStep === 0}
+            onClick={() => setStep(s => s - 1)}
+            disabled={step === 0}
+            style={{
+              ...S.btnBase,
+              background: '#fff', color: step === 0 ? '#c0c9d0' : '#4a5568',
+              border: '1.5px solid #e2eae7',
+              cursor: step === 0 ? 'not-allowed' : 'pointer',
+              opacity: step === 0 ? 0.5 : 1,
+            }}
           >
-            Previous
-          </Button>
-          {currentStep < STEPS.length - 1 ? (
-            <Button
-              type="button"
-              variant="primary"
-              onClick={handleNext}
-              className="flex-1"
-            >
-              Next
-            </Button>
+            <ChevronLeft size={16} /> Previous
+          </button>
+
+          {step < STEPS.length - 1 ? (
+            <button type="button" onClick={handleNext} style={{ ...S.btnBase, background: '#4a9080', color: '#fff' }}>
+              Next <ChevronRight size={16} />
+            </button>
           ) : (
-            <Button
+            <button
               type="submit"
-              variant="primary"
-              className="flex-1"
-              loading={isSubmitting}
+              disabled={submitting}
+              style={{ ...S.btnBase, background: '#4a9080', color: '#fff', opacity: submitting ? 0.7 : 1, cursor: submitting ? 'not-allowed' : 'pointer' }}
             >
-              Complete Onboarding
-            </Button>
+              {submitting
+                ? <><Loader2 size={15} style={{ animation: 'spin .7s linear infinite' }} /> Onboarding…</>
+                : 'Complete Onboarding'
+              }
+            </button>
           )}
         </div>
       </form>

@@ -1,20 +1,28 @@
 import { useAuth } from '../../hooks/useAuth'
 import { Card, Button, Input } from '../../components/ui'
 import { useForm } from 'react-hook-form'
+import api from '../../services/api'
+import toast from 'react-hot-toast'
 
 export const MyProfile = () => {
   const { user } = useAuth()
   const { register, handleSubmit } = useForm({
     defaultValues: {
-      name: user?.name || '',
-      email: user?.email || '',
-      phone: user?.phone || '',
+      firstName: user?.firstName || '',
+      lastName:  user?.lastName  || '',
+      email:     user?.email     || '',
+      phone:     user?.phone     || '',
       department: user?.department || '',
     },
   })
 
-  const onSubmit = (data) => {
-    console.log('Update profile:', data)
+  const onSubmit = async (data) => {
+    try {
+      await api.patch('/users/me', { firstName: data.firstName, lastName: data.lastName, phone: data.phone })
+      toast.success('Profile updated successfully')
+    } catch (err) {
+      toast.error(err?.error?.message || 'Failed to update profile')
+    }
   }
 
   return (
@@ -24,7 +32,8 @@ export const MyProfile = () => {
       <Card className="p-6">
         <h2 className="text-xl font-semibold text-app mb-6">Personal Information</h2>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <Input label="Name" {...register('name')} />
+          <Input label="First Name" {...register('firstName')} />
+          <Input label="Last Name"  {...register('lastName')}  />
           <Input label="Email" type="email" {...register('email')} disabled />
           <Input label="Phone" type="tel" {...register('phone')} />
           <Input label="Department" {...register('department')} disabled />

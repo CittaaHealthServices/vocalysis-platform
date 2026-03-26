@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Card, Button, LoadingScreen } from '../../components/ui'
 import { WaveformRecorder } from '../../components/audio/WaveformRecorder'
@@ -19,6 +19,11 @@ export const WellnessCheckIn = () => {
     (result) => result?.status === 'completed' || result?.status === 'failed',
     3000
   )
+
+  // Advance to Results step when polling finishes
+  useEffect(() => {
+    if (completed && currentStep === 2) setCurrentStep(3)
+  }, [completed])
 
   const handleEnvironmentCheck = () => {
     setCurrentStep(1)
@@ -130,7 +135,7 @@ export const WellnessCheckIn = () => {
       )}
 
       {/* Step 4: Results */}
-      {completed && currentStep === 2 && (
+      {currentStep === 3 && (
         <Card className="p-8">
           <h2 className="text-2xl font-bold text-app mb-6 text-center">Your Wellness Results</h2>
           <WellnessWheel data={results?.wheelData || []} />

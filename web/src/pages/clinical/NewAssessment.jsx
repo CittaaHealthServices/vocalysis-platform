@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { Card, CardTitle, Button, Input, Select, Modal, Spinner } from '../../components/ui'
@@ -31,6 +31,11 @@ export const NewAssessment = () => {
     (result) => result?.status === 'completed' || result?.status === 'failed',
     3000
   )
+
+  // Advance to Results step when polling finishes
+  useEffect(() => {
+    if (completed && currentStep === 3) setCurrentStep(4)
+  }, [completed])
 
   const handlePatientSelect = (id) => {
     setPatientId(id)
@@ -242,7 +247,7 @@ export const NewAssessment = () => {
       )}
 
       {/* Step 5: Results */}
-      {completed && currentStep === 3 && (
+      {currentStep === 4 && (
         <Card className="p-12 text-center">
           <CardTitle className="mb-6">Assessment Complete!</CardTitle>
           <p className="text-gray-600 mb-8">

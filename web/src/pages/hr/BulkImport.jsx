@@ -40,7 +40,7 @@ export const BulkImport = () => {
       setCsvData([])
       setProgress(0)
     } catch (error) {
-      toast.error('Import failed: ' + error.message)
+      toast.error('Import failed: ' + (error?.error?.message || error?.message || 'Unknown error'))
     } finally {
       setImporting(false)
     }

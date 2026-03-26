@@ -1,6 +1,8 @@
 import { useForm } from 'react-hook-form'
 import { useAuth } from '../../hooks/useAuth'
 import { Card, Button, Input, Checkbox } from '../../components/ui'
+import api from '../../services/api'
+import toast from 'react-hot-toast'
 
 export const CompanySettings = () => {
   const { user } = useAuth()
@@ -13,8 +15,17 @@ export const CompanySettings = () => {
     },
   })
 
-  const onSubmit = (data) => {
-    console.log('Update settings:', data)
+  const onSubmit = async (data) => {
+    try {
+      await api.patch('/company/settings', {
+        googleIntegration: data.googleIntegration,
+        emailNotifications: data.emailNotifications,
+        dataRetentionDays: Number(data.dataRetention),
+      })
+      toast.success('Settings saved successfully')
+    } catch (err) {
+      toast.error(err?.error?.message || 'Failed to save settings')
+    }
   }
 
   return (
