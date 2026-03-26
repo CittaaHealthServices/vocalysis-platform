@@ -11,8 +11,16 @@ export default defineConfig({
         Buffer: true,
         process: true,
       },
+      protocolImports: true,
     }),
   ],
+  resolve: {
+    alias: [
+      // Some packages import 'buffer/' (trailing slash) which browsers can't resolve.
+      // Map it to the plain 'buffer' so Vite/polyfill can bundle it correctly.
+      { find: /^buffer\/$/, replacement: 'buffer' },
+    ],
+  },
   server: {
     port: 5173,
     proxy: {
