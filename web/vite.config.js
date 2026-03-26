@@ -3,35 +3,32 @@ import react from '@vitejs/plugin-react'
 import { nodePolyfills } from 'vite-plugin-node-polyfills'
 
 /**
- * Vite plugin that rewrites `import "buffer/"` (trailing slash) in source code
- * to `import "buffer"` so vite-plugin-node-polyfills can handle it.
- * Some packages (wavesurfer.js, etc.) use the trailing-slash form which browsers
- * cannot resolve as a bare module specifier.
+ * Plugin that removes `import "buffer/"` side-effect statements from the
+ * final bundled chunks. The trailing-slash form (buffer/) is invalid in the
+ * browser. Since vite-plugin-node-polyfills already exposes Buffer globally
+ * via globals.Buffer, the redundant side-effect import can be safely dropped.
+ *
+ * Using renderChunk (not transform) because the import is lifted to the chunk
+ * level by Rollup after all source transforms have run.
  */
-function fixBufferTrailingSlash() {
+function removeBufferSlashImport() {
   return {
-    name: 'fix-buffer-trailing-slash',
-    enforce: 'pre',
-    // Transform hook rewrites source code BEFORE Rollup processes it
-    transform(code) {
+    name: 'remove-buffer-slash-import',
+    // renderChunk runs on the final assembled chunk code, after all transforms
+    renderChunk(code) {
       if (!code.includes('buffer/')) return null
-      return code
-        .replace(/from\s*['"]buffer\/['"]/g, "from 'buffer'")
-        .replace(/import\s*['"]buffer\/['"]/g, "import 'buffer'")
-        .replace(/require\s*\(\s*['"]buffer\/['"]\s*\)/g, "require('buffer')")
-    },
-    // Also handle resolveId for any cases the transform misses
-    resolveId(id) {
-      if (id === 'buffer/' || (id.startsWith('buffer/') && !id.startsWith('buffer//'))) {
-        return { id: 'buffer', moduleSideEffects: false }
-      }
+      const fixed = code
+        // Remove bare side-effect imports: import "buffer/" or import 'buffer/'
+        .replace(/import\s*["']buffer\/["'];?/g, '')
+        // Fix named imports: from "buffer/" → from 'buffer'
+        .replace(/from\s*["']buffer\/["']/g, "from 'buffer'")
+      return fixed !== code ? { code: fixed, map: null } : null
     }
   }
 }
 
 export default defineConfig({
   plugins: [
-    fixBufferTrailingSlash(),
     react(),
     nodePolyfills({
       include: ['buffer', 'process', 'util', 'stream', 'events'],
@@ -41,25 +38,9 @@ export default defineConfig({
       },
       protocolImports: true,
     }),
+    // Must come AFTER nodePolyfills so renderChunk runs after polyfill injection
+    removeBufferSlashImport(),
   ],
-  optimizeDeps: {
-    // Force esbuild to pre-bundle buffer so the polyfill is available
-    include: ['buffer'],
-    esbuildOptions: {
-      plugins: [
-        {
-          name: 'fix-buffer-slash-esbuild',
-          setup(build) {
-            // Redirect 'buffer/' imports to 'buffer' during esbuild pre-bundling
-            build.onResolve({ filter: /^buffer\/$/ }, () => ({
-              path: 'buffer',
-              external: false,
-            }))
-          }
-        }
-      ]
-    }
-  },
   server: {
     port: 5173,
     proxy: {
