@@ -5,7 +5,7 @@ import { RiskDonut } from '../../components/charts/RiskDonut'
 import api from '../../services/api'
 
 export const ClinicalAnalytics = () => {
-  const { data: analytics, isLoading } = useApi(['analytics', 'clinical'], () => api.get('/analytics/clinical'))
+  const { data: analytics, isLoading } = useApi(['analytics', 'clinical'], () => api.get('/analytics/overview'))
 
   if (isLoading) return <LoadingScreen />
 

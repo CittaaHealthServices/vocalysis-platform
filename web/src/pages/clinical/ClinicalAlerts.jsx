@@ -4,7 +4,7 @@ import AlertCard from '../../components/alerts/AlertCard'
 import api from '../../services/api'
 
 export const ClinicalAlerts = () => {
-  const { data: alerts, isLoading } = useApi(['alerts', 'clinical'], () => api.get('/alerts/clinical'))
+  const { data: alerts, isLoading } = useApi(['alerts', 'clinical'], () => api.get('/alerts'))
 
   if (isLoading) return <LoadingScreen />
 

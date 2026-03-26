@@ -3,7 +3,7 @@ import clsx from 'clsx'
 import {
   BarChart3, Users, Settings, AlertCircle, BookOpen, Clock,
   Home, FileText, Key, Activity, TrendingUp, Video,
-  DollarSign, Building2, HeartPulse, LogOut, FlaskConical,
+  DollarSign, Building2, HeartPulse, LogOut, FlaskConical, Brain,
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 
@@ -20,14 +20,15 @@ const ROLE_LABELS = {
 
 const SIDEBAR_ITEMS = {
   CITTAA_SUPER_ADMIN: [
-    { label: 'Platform Overview', path: '/cittaa-admin',            icon: BarChart3  },
-    { label: 'Tenants',           path: '/cittaa-admin/tenants',    icon: Building2  },
-    { label: 'Analytics',         path: '/cittaa-admin/analytics',  icon: TrendingUp },
-    { label: 'API Keys',          path: '/cittaa-admin/api-keys',   icon: Key        },
-    { label: 'Trial Management',  path: '/cittaa-admin/trials',     icon: FlaskConical},
-    { label: 'Health Monitor',    path: '/cittaa-admin/health',     icon: Activity   },
-    { label: 'Audit Log',         path: '/cittaa-admin/audit-log',  icon: FileText   },
-    { label: 'Error Log',         path: '/cittaa-admin/errors',     icon: AlertCircle},
+    { label: 'Platform Overview', path: '/cittaa-admin',                  icon: BarChart3   },
+    { label: 'Tenants',           path: '/cittaa-admin/tenants',          icon: Building2   },
+    { label: 'Psychologists',     path: '/cittaa-admin/psychologists',    icon: Brain       },
+    { label: 'Analytics',         path: '/cittaa-admin/analytics',        icon: TrendingUp  },
+    { label: 'API Keys',          path: '/cittaa-admin/api-keys',         icon: Key         },
+    { label: 'Trial Management',  path: '/cittaa-admin/trials',           icon: FlaskConical},
+    { label: 'Health Monitor',    path: '/cittaa-admin/health',           icon: Activity    },
+    { label: 'Audit Log',         path: '/cittaa-admin/audit-log',        icon: FileText    },
+    { label: 'Error Log',         path: '/cittaa-admin/errors',           icon: AlertCircle },
   ],
   CITTAA_CEO: [
     { label: 'Executive Overview', path: '/ceo',                      icon: BarChart3     },
@@ -54,6 +55,7 @@ const SIDEBAR_ITEMS = {
     { label: 'Dashboard',      path: '/clinical',                  icon: Home       },
     { label: 'Patients',       path: '/clinical/patients',         icon: Users      },
     { label: 'New Assessment', path: '/clinical/assessment/new',   icon: FileText   },
+    { label: 'Session Forms',  path: '/clinical/session-forms',    icon: Brain      },
     { label: 'Alerts',         path: '/clinical/alerts',           icon: AlertCircle},
     { label: 'Analytics',      path: '/clinical/analytics',        icon: TrendingUp },
     { label: 'Consultations',  path: '/clinical/consultations',    icon: Clock      },
@@ -63,6 +65,7 @@ const SIDEBAR_ITEMS = {
     { label: 'Dashboard',      path: '/clinical',                  icon: Home       },
     { label: 'Patients',       path: '/clinical/patients',         icon: Users      },
     { label: 'New Assessment', path: '/clinical/assessment/new',   icon: FileText   },
+    { label: 'Session Forms',  path: '/clinical/session-forms',    icon: Brain      },
     { label: 'Alerts',         path: '/clinical/alerts',           icon: AlertCircle},
     { label: 'Analytics',      path: '/clinical/analytics',        icon: TrendingUp },
     { label: 'Consultations',  path: '/clinical/consultations',    icon: Clock      },

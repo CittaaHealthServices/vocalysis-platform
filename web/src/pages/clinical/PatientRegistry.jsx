@@ -10,7 +10,7 @@ export const PatientRegistry = () => {
 
   const { data: patients, isLoading } = useApi(
     ['patients', filters],
-    () => api.get('/patients', { params: filters })
+    () => api.get('/clinical/patients', { params: filters })
   )
 
   const columns = [

@@ -4,6 +4,7 @@ import { ProtectedRoute } from './ProtectedRoute'
 
 // Auth Pages
 import Login from '../pages/auth/Login'
+import Register from '../pages/auth/Register'
 import ForgotPassword from '../pages/auth/ForgotPassword'
 import ResetPassword from '../pages/auth/ResetPassword'
 import GoogleCallback from '../pages/auth/GoogleCallback'
@@ -21,6 +22,7 @@ import Consultations from '../pages/clinical/Consultations'
 import ClinicalAlerts from '../pages/clinical/ClinicalAlerts'
 import ClinicalAnalytics from '../pages/clinical/ClinicalAnalytics'
 import ProtocolGuide from '../pages/clinical/ProtocolGuide'
+import SessionForms from '../pages/clinical/SessionForms'
 
 // HR Pages
 import HROverview from '../pages/hr/HROverview'
@@ -57,6 +59,7 @@ import HealthMonitor from '../pages/cittaa-admin/HealthMonitor'
 import AuditLog from '../pages/cittaa-admin/AuditLog'
 import ErrorLog from '../pages/cittaa-admin/ErrorLog'
 import TrialManagement from '../pages/cittaa-admin/TrialManagement'
+import Psychologists from '../pages/cittaa-admin/Psychologists'
 
 // CEO Pages
 import CEODashboard from '../pages/ceo/CEODashboard'
@@ -84,6 +87,10 @@ const router = createBrowserRouter([
   {
     path: '/login',
     element: <Login />,
+  },
+  {
+    path: '/register',
+    element: <Register />,
   },
   {
     path: '/forgot-password',
@@ -146,6 +153,10 @@ const router = createBrowserRouter([
       {
         path: 'protocol',
         element: <ProtocolGuide />,
+      },
+      {
+        path: 'session-forms',
+        element: <SessionForms />,
       },
     ],
   },
@@ -332,6 +343,10 @@ const router = createBrowserRouter([
       {
         path: 'trials',
         element: <TrialManagement />,
+      },
+      {
+        path: 'psychologists',
+        element: <Psychologists />,
       },
     ],
   },

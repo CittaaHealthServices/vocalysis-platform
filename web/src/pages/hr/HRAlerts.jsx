@@ -4,7 +4,7 @@ import { LoadingScreen } from '../../components/ui'
 import api from '../../services/api'
 
 export const HRAlerts = () => {
-  const { data: alerts, isLoading } = useApi(['alerts', 'hr'], () => api.get('/alerts/hr'))
+  const { data: alerts, isLoading } = useApi(['alerts', 'hr'], () => api.get('/alerts'))
 
   if (isLoading) return <LoadingScreen />
 

@@ -9,14 +9,20 @@ const logger = require('./utils/logger');
 const { requireAuth, requireRole } = require('./middleware/auth');
 
 // Import routes
-const authRoutes         = require('./routes/auth.routes');
-const consultationRoutes = require('./routes/consultations.routes');
-const sessionRoutes      = require('./routes/sessions.routes');
-const employeeRoutes     = require('./routes/employees.routes');
-const alertRoutes        = require('./routes/alerts.routes');
-const analyticsRoutes    = require('./routes/analytics.routes');
-const tenantRoutes       = require('./routes/tenants.routes');
-const trialRoutes        = require('./routes/trial.routes');
+const authRoutes          = require('./routes/auth.routes');
+const consultationRoutes  = require('./routes/consultations.routes');
+const sessionRoutes       = require('./routes/sessions.routes');
+const employeeRoutes      = require('./routes/employees.routes');
+const alertRoutes         = require('./routes/alerts.routes');
+const analyticsRoutes     = require('./routes/analytics.routes');
+const tenantRoutes        = require('./routes/tenants.routes');
+const trialRoutes         = require('./routes/trial.routes');
+const cittaaAdminRoutes   = require('./routes/cittaa-admin.routes');
+const companyRoutes       = require('./routes/company.routes');
+const myRoutes            = require('./routes/my.routes');
+const usersRoutes         = require('./routes/users.routes');
+const clinicalRoutes      = require('./routes/clinical.routes');
+const eapRoutes           = require('./routes/eap.routes');
 
 // Create Express app
 const app = express();
@@ -90,6 +96,12 @@ app.use('/alerts', alertRoutes);
 app.use('/analytics', analyticsRoutes);
 app.use('/tenants', tenantRoutes);
 app.use('/trial', trialRoutes);
+app.use('/cittaa-admin', cittaaAdminRoutes);
+app.use('/company', companyRoutes);
+app.use('/my', myRoutes);
+app.use('/users', usersRoutes);
+app.use('/clinical', clinicalRoutes);
+app.use('/eap', eapRoutes);
 
 // ============================================================================
 // DOCUMENTATION & ADMIN ROUTES

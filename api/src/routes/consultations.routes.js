@@ -616,4 +616,54 @@ router.post('/:id/meet-link', requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * POST /consultations/request
+ * Employee self-requests a consultation (creates a pending request)
+ */
+router.post('/request', requireAuth, async (req, res) => {
+  try {
+    const { reason, preferredDate, preferredTime, type = 'online' } = req.body;
+    const employeeId = req.user._id.toString();
+    const { tenantId } = req.user;
+
+    if (!reason) {
+      return res.status(400).json({ success: false, error: { message: 'Reason is required' } });
+    }
+
+    // Find an available clinician in the same tenant
+    const clinician = await User.findOne({
+      tenantId,
+      role: { $in: ['SENIOR_CLINICIAN', 'CLINICAL_PSYCHOLOGIST'] },
+      isActive: true,
+    }).lean();
+
+    const consultation = await Consultation.create({
+      employeeId,
+      clinicianId: clinician?._id || null,
+      tenantId,
+      type,
+      mode: type,
+      status: 'PENDING',
+      employeeNotes: reason,
+      scheduledAt: preferredDate
+        ? new Date(`${preferredDate}T${preferredTime || '10:00'}`)
+        : new Date(Date.now() + 3 * 24 * 60 * 60 * 1000), // 3 days from now
+      durationMinutes: 50,
+    });
+
+    res.status(201).json({
+      success: true,
+      data: {
+        id: consultation._id,
+        status: 'PENDING',
+        message: 'Consultation request submitted. A clinician will confirm shortly.',
+        scheduledAt: consultation.scheduledAt,
+      },
+    });
+  } catch (err) {
+    logger.error('consultation request error', { error: err.message });
+    res.status(500).json({ success: false, error: { message: 'Failed to submit consultation request' } });
+  }
+});
+
 module.exports = router;

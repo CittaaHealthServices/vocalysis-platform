@@ -64,6 +64,7 @@ export const AuthProvider = ({ children }) => {
         setUser(userData)
         setIsAuthenticated(true)
         scheduleTokenRefresh(expiresIn)
+        try { sessionStorage.setItem('vocalysis_session', JSON.stringify({ user: userData })) } catch (_) {}
         return { success: true, requiresMfa: false, user: userData }
       }
     } catch (error) {
@@ -88,6 +89,7 @@ export const AuthProvider = ({ children }) => {
       setAccessToken(null)
       setUser(null)
       setIsAuthenticated(false)
+      sessionStorage.removeItem('vocalysis_session')
       if (tokenRefreshTimeoutRef.current) {
         clearTimeout(tokenRefreshTimeoutRef.current)
       }
@@ -97,18 +99,38 @@ export const AuthProvider = ({ children }) => {
   // Check if token is still valid on mount (from cookies)
   useEffect(() => {
     const checkAuth = async () => {
+      // Restore cached session immediately so the UI doesn't flash logged-out
+      // while the network verify request is in flight
+      try {
+        const cached = sessionStorage.getItem('vocalysis_session')
+        if (cached) {
+          const { user: cachedUser } = JSON.parse(cached)
+          if (cachedUser) {
+            setUser(cachedUser)
+            setIsAuthenticated(true)
+          }
+        }
+      } catch (_) { /* ignore parse errors */ }
+
       try {
         const response = await api.post('/auth/verify')
         if (response.success) {
+          const userData = response.data.user
           setAccessToken(response.data.accessToken)
-          setUser(response.data.user)
+          setUser(userData)
           setIsAuthenticated(true)
           scheduleTokenRefresh(response.data.expiresIn)
+          // Persist to sessionStorage so next refresh is instant
+          try {
+            sessionStorage.setItem('vocalysis_session', JSON.stringify({ user: userData }))
+          } catch (_) {}
         } else {
           setIsAuthenticated(false)
+          sessionStorage.removeItem('vocalysis_session')
         }
       } catch (error) {
         setIsAuthenticated(false)
+        sessionStorage.removeItem('vocalysis_session')
       } finally {
         setIsLoading(false)
       }

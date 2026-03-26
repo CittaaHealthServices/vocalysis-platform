@@ -5,7 +5,7 @@ import { RiskDonut } from '../../components/charts/RiskDonut'
 import api from '../../services/api'
 
 export const HRAnalytics = () => {
-  const { data: analytics, isLoading } = useApi(['analytics', 'hr'], () => api.get('/analytics/hr'))
+  const { data: analytics, isLoading } = useApi(['analytics', 'hr'], () => api.get('/analytics/overview'))
 
   if (isLoading) return <LoadingScreen />
 

@@ -324,6 +324,15 @@ export const Login = () => {
                     className="text-center text-white/25 text-xs mt-6">
             Having trouble signing in? Contact your administrator.
           </motion.p>
+
+          {/* Individual sign-up link */}
+          <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.1 }}
+                    className="text-center text-white/40 text-xs mt-3">
+            New individual user?{' '}
+            <a href="/register" className="text-violet-400 hover:text-violet-300 font-semibold transition-colors">
+              Create a free account
+            </a>
+          </motion.p>
         </motion.div>
       </div>
 

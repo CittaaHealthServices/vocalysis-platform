@@ -3,6 +3,20 @@ const router = express.Router();
 const User = require('../models/User');
 const Tenant = require('../models/Tenant');
 const jwt = require('jsonwebtoken');
+
+// Detect production: NODE_ENV, or Railway-injected env vars
+const IS_PROD = process.env.NODE_ENV === 'production'
+  || !!process.env.RAILWAY_ENVIRONMENT_NAME
+  || !!process.env.RAILWAY_STATIC_URL
+  || !!process.env.RAILWAY_PUBLIC_DOMAIN;
+
+const COOKIE_OPTS = {
+  httpOnly: true,
+  secure:   IS_PROD,                  // HTTPS only in prod
+  sameSite: IS_PROD ? 'none' : 'lax', // cross-origin in prod
+  path:     '/',
+  maxAge:   7 * 24 * 60 * 60 * 1000, // 7 days
+};
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
@@ -52,6 +66,72 @@ function safeUser(user) {
     tenantId:  user.tenantId,
   };
 }
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * POST /auth/register/self   — PUBLIC self-registration for individual users
+ * Creates an EMPLOYEE account under the shared 'individual' tenant
+ */
+router.post('/register/self', async (req, res) => {
+  try {
+    const { email, firstName, lastName, password } = req.body;
+    const requestId = req.requestId;
+
+    if (!email || !firstName || !lastName || !password) {
+      return res.status(400).json({ success: false, error: { message: 'All fields are required' } });
+    }
+
+    if (!_isValidPassword(password)) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'Password must be at least 10 characters with uppercase, lowercase, number, and special character (!@#$%^&*)' }
+      });
+    }
+
+    const existing = await User.findOne({ email: email.toLowerCase() });
+    if (existing) {
+      return res.status(409).json({ success: false, error: { message: 'An account with this email already exists' } });
+    }
+
+    // Individual users belong to a shared 'individual' tenant
+    const individualTenantId = process.env.INDIVIDUAL_TENANT_ID || 'individual';
+
+    const newUser = new User({
+      email:       email.toLowerCase(),
+      firstName:   firstName.trim(),
+      lastName:    lastName.trim(),
+      role:        'EMPLOYEE',
+      tenantId:    individualTenantId,
+      isActive:    true,
+      isEmailVerified: false,
+      loginAttempts: 0,
+      consentRecord: { consentGiven: false, dataProcessingConsent: false },
+      notificationPreferences: { emailAlerts: true, inAppAlerts: true },
+    });
+    await newUser.setPassword(password);
+    await newUser.save();
+
+    // Send welcome email (non-blocking)
+    emailService.sendWelcomeEmail({
+      to: email,
+      name: firstName,
+      loginUrl: `${process.env.PLATFORM_URL || 'https://striking-bravery-production-c13e.up.railway.app'}/login`,
+      companyName: 'Vocalysis',
+    }).catch(err => logger.error('Self-registration welcome email failed', { error: err.message }));
+
+    res.status(201).json({
+      success: true,
+      data: {
+        user: safeUser(newUser),
+        message: 'Account created successfully. You can now log in.',
+      },
+    });
+  } catch (err) {
+    logger.error('Self-registration failed', { error: err.message });
+    res.status(500).json({ success: false, error: { message: 'Registration failed. Please try again.' } });
+  }
+});
 
 /* ─────────────────────────────────────────────────────────────────────────── */
 
@@ -241,12 +321,7 @@ router.post('/login', async (req, res) => {
       { expiresIn: REFRESH_TOKEN_EXPIRY }
     );
 
-    res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure:   process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-      maxAge:   7 * 24 * 60 * 60 * 1000
-    });
+    res.cookie('refreshToken', refreshToken, COOKIE_OPTS);
 
     await auditService.log({
       userId: user._id, tenantId: user.tenantId, role: user.role,
@@ -341,12 +416,7 @@ router.post('/refresh', async (req, res) => {
       { expiresIn: REFRESH_TOKEN_EXPIRY }
     );
 
-    res.cookie('refreshToken', newRefreshToken, {
-      httpOnly: true,
-      secure:   process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-      maxAge:   7 * 24 * 60 * 60 * 1000
-    });
+    res.cookie('refreshToken', newRefreshToken, COOKIE_OPTS);
 
     res.json({
       success: true,
@@ -379,11 +449,7 @@ router.post('/logout', requireAuth, async (req, res) => {
       }
     }
 
-    res.clearCookie('refreshToken', {
-      httpOnly: true,
-      secure:   process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-    });
+    res.clearCookie('refreshToken', COOKIE_OPTS);
 
     await auditService.log({
       userId: req.user.userId, tenantId: req.user.tenantId, role: req.user.role,
@@ -636,12 +702,7 @@ router.get('/google/callback', async (req, res) => {
       );
 
       // Set cookie
-      res.cookie('refreshToken', refreshToken, {
-        httpOnly: true,
-        secure:   process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-        maxAge:   7 * 24 * 60 * 60 * 1000,
-      });
+      res.cookie('refreshToken', refreshToken, COOKIE_OPTS);
 
       // Update user's Google profile info
       user.lastLoginAt = new Date();

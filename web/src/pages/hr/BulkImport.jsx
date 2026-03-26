@@ -31,12 +31,12 @@ export const BulkImport = () => {
 
   const handleImport = async () => {
     setImporting(true)
+    setProgress(10)
     try {
-      for (let i = 0; i < csvData.length; i++) {
-        await api.post('/employees/bulk', csvData[i])
-        setProgress(((i + 1) / csvData.length) * 100)
-      }
-      toast.success('Import completed successfully')
+      // Send all records in one batch request
+      const res = await api.post('/employees/bulk-json', { employees: csvData })
+      setProgress(100)
+      toast.success(`Import completed: ${res.data?.imported || csvData.length} employees added`)
       setCsvData([])
       setProgress(0)
     } catch (error) {

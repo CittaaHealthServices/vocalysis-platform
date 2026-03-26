@@ -6,7 +6,7 @@ import api from '../../services/api'
 
 export const PatientProfile = () => {
   const { id } = useParams()
-  const { data: patient, isLoading } = useApi(['patient', id], () => api.get(`/patients/${id}`))
+  const { data: patient, isLoading } = useApi(['patient', id], () => api.get(`/clinical/patients/${id}`))
 
   if (isLoading) return <LoadingScreen />
 

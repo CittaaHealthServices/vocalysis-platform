@@ -652,4 +652,70 @@ router.post('/:id/schedule', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMI
   }
 });
 
+/**
+ * POST /employees/bulk-json
+ * Bulk import employees from JSON array (used by BulkImport.jsx)
+ */
+router.post('/bulk-json', requireAuth, requireRole(['COMPANY_ADMIN', 'HR_ADMIN']), async (req, res) => {
+  try {
+    const { employees } = req.body;
+    if (!Array.isArray(employees) || employees.length === 0) {
+      return res.status(400).json({ success: false, error: { message: 'employees array is required' } });
+    }
+
+    const { tenantId } = req.user;
+    const results = { imported: 0, skipped: 0, errors: [] };
+
+    for (const row of employees) {
+      try {
+        const email = (row.email || '').toLowerCase().trim();
+        if (!email) { results.skipped++; continue; }
+
+        const existing = await User.findOne({ email });
+        if (existing) { results.skipped++; continue; }
+
+        const tempPassword = crypto.randomBytes(8).toString('hex') + 'A1!';
+        const newUser = new User({
+          email,
+          firstName: (row.name || row.firstName || '').split(' ')[0] || 'Employee',
+          lastName:  (row.name || '').split(' ').slice(1).join(' ') || (row.lastName || ''),
+          role:      'EMPLOYEE',
+          tenantId,
+          employeeId: row.employeeId || row.employee_id || '',
+          departmentId: row.department || row.departmentId || '',
+          jobTitle:  row.jobTitle || row.job_title || '',
+          isActive:  true,
+          isEmailVerified: false,
+          loginAttempts: 0,
+          consentRecord: { consentGiven: false, dataProcessingConsent: false },
+          notificationPreferences: { emailAlerts: true, inAppAlerts: true },
+        });
+        await newUser.setPassword(tempPassword);
+        await newUser.save();
+        results.imported++;
+
+        // Send welcome email non-blocking
+        emailService.sendWelcomeEmail?.({
+          to: email,
+          name: newUser.firstName,
+          loginUrl: `${process.env.PLATFORM_URL || 'https://striking-bravery-production-c13e.up.railway.app'}/login`,
+          tempPassword,
+          companyName: 'Vocalysis',
+        }).catch(() => {});
+      } catch (rowErr) {
+        results.errors.push({ row: row.email, error: rowErr.message });
+      }
+    }
+
+    res.json({
+      success: true,
+      data: results,
+      message: `Imported ${results.imported} employees, skipped ${results.skipped} duplicates`,
+    });
+  } catch (err) {
+    logger.error('bulk-json import error', { error: err.message });
+    res.status(500).json({ success: false, error: { message: 'Bulk import failed' } });
+  }
+});
+
 module.exports = router;
