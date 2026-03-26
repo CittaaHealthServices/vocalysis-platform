@@ -27,13 +27,28 @@ const SETTINGS_ROUTES = {
   CITTAA_CEO:            null,
 }
 
-/* Mock notifications — replace with real API call when backend is ready */
-const MOCK_NOTIFS = [
-  { id: 1, type: 'alert',   title: 'High-risk alert',       body: 'Employee in Engineering flagged as high-risk', time: '5 min ago', read: false },
-  { id: 2, type: 'info',    title: 'Assessment completed',  body: 'Wellness check-in submitted by Priya S.',      time: '1 hr ago',  read: false },
-  { id: 3, type: 'success', title: 'Onboarding complete',   body: 'TechCorp India has been successfully onboarded', time: '2 hr ago', read: true  },
-  { id: 4, type: 'info',    title: 'New consultation booked', body: 'Session scheduled for tomorrow at 3:00 PM',   time: '3 hr ago',  read: true  },
-]
+/* Map alert severity / type → notification type icon */
+function alertToNotif(alert, index) {
+  const typeMap = { high: 'alert', medium: 'alert', low: 'info', success: 'success' }
+  const type = typeMap[alert.severity] || 'info'
+  const createdAt = alert.createdAt ? new Date(alert.createdAt) : null
+  let time = ''
+  if (createdAt) {
+    const diff = Math.floor((Date.now() - createdAt.getTime()) / 1000)
+    if (diff < 60)        time = `${diff}s ago`
+    else if (diff < 3600) time = `${Math.floor(diff / 60)} min ago`
+    else if (diff < 86400) time = `${Math.floor(diff / 3600)} hr ago`
+    else                  time = createdAt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+  }
+  return {
+    id:    alert._id || alert.id || index,
+    type,
+    title: alert.title || alert.message || 'Alert',
+    body:  alert.description || alert.body || '',
+    time,
+    read:  alert.status === 'resolved' || alert.read || false,
+  }
+}
 
 function NotifIcon({ type }) {
   if (type === 'alert')   return <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
@@ -47,10 +62,23 @@ export const TopNav = ({ onMenuClick, userImpersonating = false }) => {
 
   const [dropdownOpen, setDropdownOpen]   = useState(false)
   const [notifOpen, setNotifOpen]         = useState(false)
-  const [notifs, setNotifs]               = useState(MOCK_NOTIFS)
+  const [notifs, setNotifs]               = useState([])
 
   const dropdownRef = useRef(null)
   const notifRef    = useRef(null)
+
+  /* Fetch real notifications from the API, scoped by role/tenant via auth cookie */
+  useEffect(() => {
+    if (!user) return
+    api.get('/alerts?limit=15&status=active')
+      .then(res => {
+        const raw = res?.data?.data || res?.data?.alerts || res?.data || []
+        if (Array.isArray(raw) && raw.length > 0) {
+          setNotifs(raw.map((a, i) => alertToNotif(a, i)))
+        }
+      })
+      .catch(() => { /* silently keep empty if API unavailable */ })
+  }, [user])
 
   /* Close panels on outside click */
   useEffect(() => {

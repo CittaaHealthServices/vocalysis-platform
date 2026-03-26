@@ -161,22 +161,28 @@ export const OnboardWizard = () => {
     }
     setSubmitting(true)
     try {
+      // Split "Full Name" into first / last for the backend
+      const nameParts     = vals.adminName.trim().split(/\s+/)
+      const adminFirstName = nameParts[0] || vals.adminName.trim()
+      const adminLastName  = nameParts.slice(1).join(' ') || '—'
+
       await api.post('/tenants', {
-        displayName:   vals.companyName.trim(),
-        legalName:     vals.companyName.trim(),
-        industry:      vals.industry,
-        employeeCount: Number(vals.employeeCount),
-        country:       vals.country.trim(),
-        city:          vals.city.trim(),
-        adminName:     vals.adminName.trim(),
-        adminEmail:    vals.adminEmail.trim(),
-        tier:          vals.tier,
-        status:        'active',
+        name:           vals.companyName.trim(),   // backend expects `name`
+        industry:       vals.industry,
+        employeeCount:  Number(vals.employeeCount),
+        country:        vals.country.trim(),
+        city:           vals.city.trim(),
+        adminFirstName,
+        adminLastName,
+        adminEmail:     vals.adminEmail.trim(),
+        tier:           vals.tier,
+        status:         'active',
       })
       toast.success(`${vals.companyName} onboarded successfully!`)
       navigate('/cittaa-admin/tenants')
     } catch (err) {
-      toast.error(err?.error?.message || 'Onboarding failed — please try again')
+      const msg = err?.response?.data?.error || err?.message || 'Onboarding failed — please try again'
+      toast.error(msg)
     } finally {
       setSubmitting(false)
     }
