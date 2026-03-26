@@ -4,8 +4,9 @@ const logger = require('./logger');
 let retryCount = 0;
 const MAX_RETRY_DELAY = 30000;
 
-const redis = new Redis({
-  url: process.env.REDIS_URL || 'redis://localhost:6379',
+const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+
+const redis = new Redis(redisUrl, {
   enableReadyCheck: false,
   maxRetriesPerRequest: null,
   retryStrategy: (times) => {
