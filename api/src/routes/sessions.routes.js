@@ -44,7 +44,8 @@ const assessmentQueue = new Bull('assessments', {
 router.post('/', requireAuth, requireRole(['EMPLOYEE', 'HR_ADMIN', 'CLINICIAN']), upload.single('audio'), async (req, res) => {
   try {
     const { employeeId, notes } = req.body;
-    const userId = req.user._id;
+    // ✅ Fix: auth middleware sets req.user.userId (UUID), not req.user._id
+    const userId = req.user.userId || req.user._id;
     const userRole = req.user.role;
     const tenantId = req.user.tenantId;
     const requestId = req.requestId;
@@ -66,14 +67,21 @@ router.post('/', requireAuth, requireRole(['EMPLOYEE', 'HR_ADMIN', 'CLINICIAN'])
       return res.status(400).json({ error: err.message });
     }
 
-    // Get employee and tenant
+    // ✅ Fix: find by userId (UUID string) not MongoDB _id; find tenant by tenantId string
     const [employee, tenant] = await Promise.all([
-      User.findById(targetEmployeeId),
-      Tenant.findById(tenantId)
+      userRole === 'EMPLOYEE'
+        ? User.findOne({ userId: targetEmployeeId })       // self-submit: match by uuid
+        : (User.findOne({ userId: targetEmployeeId }) ||   // admin specifying another user
+           User.findById(targetEmployeeId).catch(() => null)),
+      Tenant.findOne({ tenantId }),                        // tenantId is string, not ObjectId
     ]);
 
     if (!employee) {
       return res.status(404).json({ error: 'Employee not found' });
+    }
+
+    if (!tenant) {
+      return res.status(404).json({ error: 'Tenant not found' });
     }
 
     // Check tenant monthly quota
@@ -86,7 +94,7 @@ router.post('/', requireAuth, requireRole(['EMPLOYEE', 'HR_ADMIN', 'CLINICIAN'])
       createdAt: { $gte: monthStart, $lte: monthEnd }
     });
 
-    if (usedAssessments >= tenant.monthlyAssessmentQuota) {
+    if (tenant.monthlyAssessmentQuota && usedAssessments >= tenant.monthlyAssessmentQuota) {
       return res.status(429).json({ error: 'Monthly assessment quota reached' });
     }
 
@@ -167,8 +175,8 @@ router.post('/', requireAuth, requireRole(['EMPLOYEE', 'HR_ADMIN', 'CLINICIAN'])
       userId,
       tenantId,
       role: userRole,
-      action: 'SESSION_CREATED',
-      targetResource: 'Session',
+      action: 'ASSESSMENT_CREATE',
+      targetResource: 'session',
       targetId: session._id,
       ipAddress: req.ip,
       userAgent: req.get('user-agent'),
@@ -201,11 +209,11 @@ router.post('/', requireAuth, requireRole(['EMPLOYEE', 'HR_ADMIN', 'CLINICIAN'])
   } catch (err) {
     logger.error('Failed to create session', { error: err.message });
     await auditService.log({
-      userId: req.user._id,
+      userId: (req.user.userId || req.user._id)?.toString(),
       tenantId: req.user.tenantId,
       role: req.user.role,
-      action: 'SESSION_CREATED',
-      targetResource: 'Session',
+      action: 'ASSESSMENT_CREATE',
+      targetResource: 'session',
       ipAddress: req.ip,
       userAgent: req.get('user-agent'),
       requestId: req.requestId,
@@ -297,11 +305,11 @@ assessmentQueue.process(async (job) => {
     };
 
     // Evaluate for alerts
-    const tenant = await Tenant.findById(tenantId);
+    const tenant = await Tenant.findOne({ tenantId });
     const alertResult = await alertEngine.evaluateSession(session, tenant);
 
     if (alertResult.alertCreated) {
-      const employee = await User.findById(employeeId);
+      const employee = await User.findOne({ userId: employeeId }).catch(() => User.findById(employeeId).catch(() => null));
       const hrAdmins = await User.find({
         tenantId,
         role: { $in: ['HR_ADMIN', 'COMPANY_ADMIN'] }
@@ -328,8 +336,8 @@ assessmentQueue.process(async (job) => {
       userId,
       tenantId,
       role: 'SYSTEM',
-      action: 'SESSION_PROCESSED',
-      targetResource: 'Session',
+      action: 'ASSESSMENT_COMPLETE',
+      targetResource: 'session',
       targetId: sessionId,
       requestId,
       changeSnapshot: {
@@ -364,7 +372,7 @@ assessmentQueue.process(async (job) => {
  */
 router.get('/daily-progress', requireAuth, async (req, res) => {
   try {
-    const userId = req.user._id;
+    const userId = req.user.userId || req.user._id;
     const tenantId = req.user.tenantId;
     const todayStr = new Date().toISOString().slice(0, 10);
     const DAILY_MIN = 9;
@@ -397,7 +405,7 @@ router.get('/daily-progress', requireAuth, async (req, res) => {
 router.get('/', requireAuth, async (req, res) => {
   try {
     const { page = 1, limit = 20, status, employeeId } = req.query;
-    const userId = req.user._id;
+    const userId = req.user.userId || req.user._id;
     const userRole = req.user.role;
     const tenantId = req.user.tenantId;
     const requestId = req.requestId;
@@ -431,8 +439,8 @@ router.get('/', requireAuth, async (req, res) => {
       userId,
       tenantId,
       role: userRole,
-      action: 'SESSIONS_LISTED',
-      targetResource: 'Session',
+      action: 'SESSION_VIEW',
+      targetResource: 'session',
       ipAddress: req.ip,
       userAgent: req.get('user-agent'),
       requestId
@@ -460,7 +468,7 @@ router.get('/', requireAuth, async (req, res) => {
 router.get('/:id', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user._id;
+    const userId = req.user.userId || req.user._id;
     const userRole = req.user.role;
     const tenantId = req.user.tenantId;
     const requestId = req.requestId;
@@ -478,7 +486,9 @@ router.get('/:id', requireAuth, async (req, res) => {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
-    if (userRole === 'EMPLOYEE' && session.employeeId._id.toString() !== userId.toString()) {
+    // ✅ Fix: session.employeeId is a UUID string, not a populated object
+    const sessionEmpId = session.employeeId?._id?.toString() || session.employeeId?.toString();
+    if (userRole === 'EMPLOYEE' && sessionEmpId !== userId.toString()) {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
@@ -500,8 +510,8 @@ router.get('/:id', requireAuth, async (req, res) => {
       userId,
       tenantId,
       role: userRole,
-      action: 'SESSION_VIEWED',
-      targetResource: 'Session',
+      action: 'SESSION_VIEW',
+      targetResource: 'session',
       targetId: id,
       ipAddress: req.ip,
       userAgent: req.get('user-agent'),
@@ -523,7 +533,7 @@ router.put('/:id/finalise', requireAuth, requireRole(['CLINICIAN', 'HR_ADMIN']),
   try {
     const { id } = req.params;
     const { clinicianNotes } = req.body;
-    const userId = req.user._id;
+    const userId = req.user.userId || req.user._id;
     const userRole = req.user.role;
     const tenantId = req.user.tenantId;
     const requestId = req.requestId;
@@ -551,7 +561,7 @@ router.put('/:id/finalise', requireAuth, requireRole(['CLINICIAN', 'HR_ADMIN']),
 
     // Generate PDF
     const clinician = await User.findById(userId);
-    const tenant = await Tenant.findById(tenantId);
+    const tenant = await Tenant.findOne({ tenantId });
 
     const pdfBuffer = await pdfGenerator.generateSessionReport(
       session,
@@ -569,8 +579,8 @@ router.put('/:id/finalise', requireAuth, requireRole(['CLINICIAN', 'HR_ADMIN']),
       userId,
       tenantId,
       role: userRole,
-      action: 'SESSION_FINALISED',
-      targetResource: 'Session',
+      action: 'REPORT_GENERATE',
+      targetResource: 'session',
       targetId: id,
       ipAddress: req.ip,
       userAgent: req.get('user-agent'),
@@ -595,7 +605,7 @@ router.put('/:id/finalise', requireAuth, requireRole(['CLINICIAN', 'HR_ADMIN']),
 router.get('/:id/report', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user._id;
+    const userId = req.user.userId || req.user._id;
     const userRole = req.user.role;
     const tenantId = req.user.tenantId;
 
@@ -611,7 +621,9 @@ router.get('/:id/report', requireAuth, async (req, res) => {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
-    if (userRole === 'EMPLOYEE' && session.employeeId._id.toString() !== userId.toString()) {
+    // ✅ Fix: session.employeeId is a UUID string, not a populated object
+    const sessionEmpId = session.employeeId?._id?.toString() || session.employeeId?.toString();
+    if (userRole === 'EMPLOYEE' && sessionEmpId !== userId.toString()) {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
@@ -620,7 +632,7 @@ router.get('/:id/report', requireAuth, async (req, res) => {
     }
 
     const clinician = await User.findById(session.createdBy);
-    const tenant = await Tenant.findById(tenantId);
+    const tenant = await Tenant.findOne({ tenantId });
 
     const pdfBuffer = await pdfGenerator.generateSessionReport(
       session,
@@ -646,7 +658,7 @@ router.delete('/:id', requireAuth, requireRole(['CITTAA_SUPER_ADMIN']), async (r
   try {
     const { id } = req.params;
     const { reason } = req.body;
-    const userId = req.user._id;
+    const userId = req.user.userId || req.user._id;
     const tenantId = req.user.tenantId;
     const requestId = req.requestId;
 
@@ -664,8 +676,8 @@ router.delete('/:id', requireAuth, requireRole(['CITTAA_SUPER_ADMIN']), async (r
       userId,
       tenantId,
       role: 'CITTAA_SUPER_ADMIN',
-      action: 'SESSION_DELETED',
-      targetResource: 'Session',
+      action: 'SESSION_DELETE',
+      targetResource: 'session',
       targetId: id,
       ipAddress: req.ip,
       userAgent: req.get('user-agent'),
