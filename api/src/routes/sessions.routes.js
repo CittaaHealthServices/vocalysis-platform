@@ -76,7 +76,7 @@ router.post('/', requireAuth, requireRole(['EMPLOYEE', 'HR_ADMIN', 'CLINICIAN'])
       return res.status(404).json({ error: 'Employee not found' });
     }
 
-    // Check tenant quota
+    // Check tenant monthly quota
     const currentMonth = new Date();
     const monthStart = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
     const monthEnd = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
@@ -90,17 +90,50 @@ router.post('/', requireAuth, requireRole(['EMPLOYEE', 'HR_ADMIN', 'CLINICIAN'])
       return res.status(429).json({ error: 'Monthly assessment quota reached' });
     }
 
+    // ── Daily check-in limit: max 12 per employee per day ───────────────────
+    const todayStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const todayStart = new Date(todayStr + 'T00:00:00.000Z');
+    const todayEnd   = new Date(todayStr + 'T23:59:59.999Z');
+
+    const todayCount = await Session.countDocuments({
+      patientId: targetEmployeeId.toString(),
+      tenantId,
+      checkInDate: todayStr,
+    });
+
+    const DAILY_MAX = 12;
+    const DAILY_MIN_INFO = 9; // informational — not enforced as a hard stop
+
+    if (todayCount >= DAILY_MAX) {
+      return res.status(429).json({
+        error: `Daily check-in limit reached (${DAILY_MAX}/day). Please try again tomorrow.`,
+        todayCount,
+        dailyMax: DAILY_MAX,
+      });
+    }
+
     // Create session document
     const session = new Session({
       tenantId,
-      employeeId: targetEmployeeId,
-      createdBy: userId,
+      patientId: targetEmployeeId.toString(), // required field in model
+      employeeId: targetEmployeeId.toString(),
+      createdBy: userId.toString(),
       audioFileName: req.file.originalname,
       audioMimeType: req.file.mimetype,
       audioFileSize: req.file.size,
       notes,
       status: 'processing',
-      createdAt: new Date()
+      checkInDate: todayStr,
+      checkInIndex: todayCount + 1,
+      sessionDate: new Date(),
+      audioMetadata: {
+        fileName: req.file.originalname,
+        mimeType: req.file.mimetype,
+        sizeBytes: req.file.size,
+        uploadedAt: new Date(),
+        processingStartedAt: new Date(),
+        processingStatus: 'processing',
+      },
     });
 
     await session.save();
@@ -153,8 +186,17 @@ router.post('/', requireAuth, requireRole(['EMPLOYEE', 'HR_ADMIN', 'CLINICIAN'])
         id: session._id,
         status: session.status,
         employeeId: session.employeeId,
-        createdAt: session.createdAt
-      }
+        createdAt: session.createdAt,
+        checkInIndex: session.checkInIndex,
+        checkInDate: session.checkInDate,
+      },
+      dailyProgress: {
+        todayCount: todayCount + 1,
+        dailyMin: DAILY_MIN_INFO,
+        dailyMax: DAILY_MAX,
+        remaining: DAILY_MAX - (todayCount + 1),
+        metDailyGoal: (todayCount + 1) >= DAILY_MIN_INFO,
+      },
     });
   } catch (err) {
     logger.error('Failed to create session', { error: err.message });
@@ -214,15 +256,44 @@ assessmentQueue.process(async (job) => {
       session.audioFeatures = features;
       vocacoreResults = await vocacoreEngine.analyze(features);
     }
-    session.vocacoreResults = vocacoreResults;
+    // Map VocoCore results → Session model shape
+    const depScore  = vocacoreResults.depression_score  ?? 0;
+    const anxScore  = vocacoreResults.anxiety_score     ?? 0;
+    const strScore  = vocacoreResults.stress_score      ?? 0;
+    const confScore = vocacoreResults.confidence_score  ?? 50;
+    const riskLevel = vocacoreResults.risk_level || 'green';
 
-    // Generate wellnessOutput for employee
+    session.vocacoreResults = {
+      overallRiskLevel: ['green','yellow','orange','red'].includes(riskLevel) ? riskLevel : 'green',
+      riskScore:   Math.round((depScore + anxScore + strScore) / 3),
+      confidence:  Math.round(confScore),
+      dimensionalScores: {
+        depression: Math.round(depScore),
+        anxiety:    Math.round(anxScore),
+        stress:     Math.round(strScore),
+        burnout:    Math.round(strScore * 0.8),
+        engagement: Math.round(100 - strScore * 0.5),
+      },
+      keyIndicators:           vocacoreResults.biomarker_findings || [],
+      clinicalRecommendations: vocacoreResults.recommended_actions || [],
+      algorithmVersion: vocacoreResults.model_version || 'v2.1-india',
+      processedAt: new Date(),
+    };
+
+    // Populate audioMetadata.processingStatus
+    session.audioMetadata = {
+      ...(session.audioMetadata || {}),
+      processingCompletedAt: new Date(),
+      processingStatus: 'completed',
+    };
+
+    // Generate wellnessOutput for employee (mapped to model fields)
     session.employeeWellnessOutput = {
-      overallScore: Math.round((100 - vocacoreResults.stress_score) / 2 + vocacoreResults.confidence_score / 2),
-      stressLevel: vocacoreResults.stress_score > 75 ? 'high' : vocacoreResults.stress_score > 50 ? 'moderate' : 'low',
-      recommendedActions: _generateEmployeeRecommendations(vocacoreResults),
-      nextCheckupDays: vocacoreResults.recommended_followup_weeks * 7,
-      generatedAt: new Date()
+      wellnessScore:   Math.round((100 - strScore) * 0.6 + confScore * 0.4),
+      wellnessLevel:   strScore > 75 ? 'in_crisis' : strScore > 55 ? 'at_risk' : strScore > 30 ? 'healthy' : 'thriving',
+      personalizedRecommendations: _generateEmployeeRecommendations(vocacoreResults),
+      actionItems:     vocacoreResults.recommended_actions || [],
+      nextCheckInDate: new Date(Date.now() + (vocacoreResults.recommended_followup_weeks || 1) * 7 * 86400000),
     };
 
     // Evaluate for alerts
@@ -249,7 +320,6 @@ assessmentQueue.process(async (job) => {
 
     // Mark session as complete
     session.status = 'completed';
-    session.completedAt = new Date();
     await session.save();
 
     logger.info('Assessment processing completed', { sessionId, alertCreated: alertResult.alertCreated });
@@ -280,11 +350,43 @@ assessmentQueue.process(async (job) => {
     const session = await Session.findById(sessionId);
     if (session) {
       session.status = 'failed';
-      session.errorMessage = err.message;
+      session.audioMetadata = { ...(session.audioMetadata || {}), processingStatus: 'failed' };
       await session.save();
     }
 
     throw err;
+  }
+});
+
+/**
+ * GET /sessions/daily-progress
+ * How many check-ins has the current employee done today?
+ */
+router.get('/daily-progress', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const tenantId = req.user.tenantId;
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const DAILY_MIN = 9;
+    const DAILY_MAX = 12;
+
+    const todayCount = await Session.countDocuments({
+      patientId: userId.toString(),
+      tenantId,
+      checkInDate: todayStr,
+    });
+
+    res.json({
+      todayCount,
+      dailyMin: DAILY_MIN,
+      dailyMax: DAILY_MAX,
+      remaining: Math.max(0, DAILY_MAX - todayCount),
+      metDailyGoal: todayCount >= DAILY_MIN,
+      canCheckIn: todayCount < DAILY_MAX,
+    });
+  } catch (err) {
+    logger.error('Failed to fetch daily progress', { error: err.message });
+    res.status(500).json({ error: 'Failed to fetch daily progress' });
   }
 });
 
