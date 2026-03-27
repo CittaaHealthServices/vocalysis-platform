@@ -210,15 +210,14 @@ router.get('/:id', requireAuth, requireRole(['CITTAA_SUPER_ADMIN']), async (req,
       return res.status(404).json({ error: 'Tenant not found' });
     }
 
-    const adminCount = await User.countDocuments({
-      tenantId: id,
-      role: 'COMPANY_ADMIN'
-    });
+    // Users store string tenantId (e.g. "cittaa-3z0z"), not MongoDB ObjectId
+    const stringTenantId = tenant.tenantId;
 
-    const employeeCount = await User.countDocuments({
-      tenantId: id,
-      role: 'EMPLOYEE'
-    });
+    const [adminCount, employeeCount, totalUsers] = await Promise.all([
+      User.countDocuments({ tenantId: stringTenantId, role: { $in: ['COMPANY_ADMIN', 'HR_ADMIN'] } }),
+      User.countDocuments({ tenantId: stringTenantId, role: 'EMPLOYEE' }),
+      User.countDocuments({ tenantId: stringTenantId }),
+    ]);
 
     await auditService.log({
       userId,
@@ -236,7 +235,8 @@ router.get('/:id', requireAuth, requireRole(['CITTAA_SUPER_ADMIN']), async (req,
       tenant,
       stats: {
         adminCount,
-        employeeCount
+        employeeCount,
+        totalUsers,
       }
     });
   } catch (err) {

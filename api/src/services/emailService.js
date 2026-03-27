@@ -281,7 +281,7 @@ async function sendWelcomeEmail({ to, name, loginUrl, tempPassword, companyName 
     </td></tr>
     ${mkFooter()}
   `);
-  return sendEmail({ to, subject, html, text: `Welcome to Cittaa!\nEmail: ${to}\nTemp Password: ${tempPassword}\nLogin: ${loginUrl}` });
+  return sendEmail({ to, subject, html, urgent: true, text: `Welcome to Cittaa!\nEmail: ${to}\nTemp Password: ${tempPassword}\nLogin: ${loginUrl}` });
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -334,7 +334,7 @@ async function sendTrialInvite({ to, name, companyName, daysLeft, endDate, login
     </td></tr>
     ${mkFooter()}
   `);
-  return sendEmail({ to, subject, html, text: `${companyName} has given you a ${daysLeft}-day free Cittaa trial!\nLogin: ${loginUrl}\nExpires: ${endStr}` });
+  return sendEmail({ to, subject, html, urgent: true, text: `${companyName} has given you a ${daysLeft}-day free Cittaa trial!\nLogin: ${loginUrl}\nExpires: ${endStr}` });
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -380,7 +380,7 @@ async function sendTrialExpiryReminder({ to, name, companyName, daysLeft, endDat
     </td></tr>
     ${mkFooter()}
   `);
-  return sendEmail({ to, subject, html, text: `Trial ending in ${daysLeft} days &mdash; ${loginUrl}` });
+  return sendEmail({ to, subject, html, urgent: true, text: `Trial ending in ${daysLeft} days &mdash; ${loginUrl}` });
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -416,7 +416,7 @@ async function sendAssessmentInvite({ employee, clinicianName, assessmentUrl, sc
     </td></tr>
     ${mkFooter()}
   `);
-  return sendEmail({ to: employee.email, subject, html, text: `Wellness check-in from ${clinicianName}\nScheduled: ${scheduledDate}\nLink: ${assessmentUrl}` });
+  return sendEmail({ to: employee.email, subject, html, urgent: true, text: `Wellness check-in from ${clinicianName}\nScheduled: ${scheduledDate}\nLink: ${assessmentUrl}` });
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -465,7 +465,7 @@ async function sendAlertNotification({ to, alert, employee, tenantName }) {
     </td></tr>
     ${mkFooter()}
   `);
-  return sendEmail({ to, subject, html, text: `[${level.toUpperCase()}] Alert for ${employee.firstName} ${employee.lastName}\n${PLATFORM_URL}/alerts/${alert._id}` });
+  return sendEmail({ to, subject, html, urgent: true, text: `[${level.toUpperCase()}] Alert for ${employee.firstName} ${employee.lastName}\n${PLATFORM_URL}/alerts/${alert._id}` });
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -498,7 +498,7 @@ async function sendConsultationInvite({ to, consultation, meetLink, calendarLink
     </td></tr>
     ${mkFooter()}
   `);
-  return sendEmail({ to, subject, html, text: `Consultation confirmed: ${when} IST${meetLink ? `\nJoin: ${meetLink}` : ''}` });
+  return sendEmail({ to, subject, html, urgent: true, text: `Consultation confirmed: ${when} IST${meetLink ? `\nJoin: ${meetLink}` : ''}` });
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -523,7 +523,7 @@ async function sendPasswordReset({ to, name, resetUrl, expiresIn }) {
     </td></tr>
     ${mkFooter()}
   `);
-  return sendEmail({ to, subject, html, text: `Password reset for ${name}: ${resetUrl}\nExpires in: ${expiry}` });
+  return sendEmail({ to, subject, html, urgent: true, text: `Password reset for ${name}: ${resetUrl}\nExpires in: ${expiry}` });
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -603,7 +603,7 @@ async function sendConsultationReminder({ to, consultation, minutesBefore }) {
     </td></tr>
     ${mkFooter()}
   `);
-  return sendEmail({ to, subject, html, text: `Session in ${minutesBefore} min${consultation.meetLink ? `\n${consultation.meetLink}` : ''}` });
+  return sendEmail({ to, subject, html, urgent: true, text: `Session in ${minutesBefore} min${consultation.meetLink ? `\n${consultation.meetLink}` : ''}` });
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -630,7 +630,7 @@ async function sendAlertEscalationNotification({ to, alert, employee, reason }) 
     </td></tr>
     ${mkFooter()}
   `);
-  return sendEmail({ to, subject, html, text: `ESCALATED: ${employee.firstName} ${employee.lastName}\n${PLATFORM_URL}/alerts/${alert._id}` });
+  return sendEmail({ to, subject, html, urgent: true, text: `ESCALATED: ${employee.firstName} ${employee.lastName}\n${PLATFORM_URL}/alerts/${alert._id}` });
 }
 
 /* ─────────────────────────────────────────────────────────────────────────── */
