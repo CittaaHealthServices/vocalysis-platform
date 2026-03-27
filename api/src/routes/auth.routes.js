@@ -485,7 +485,7 @@ router.post('/forgot-password', async (req, res) => {
     await user.save();
 
     const platformUrl = process.env.PLATFORM_URL || 'https://striking-bravery-production-c13e.up.railway.app';
-    const resetUrl = `${platformUrl}/reset-password?token=${resetToken}`;
+    const resetUrl = `${platformUrl}/reset-password/${resetToken}`;
     await emailService.sendPasswordReset({
       to: email,
       name: user.firstName,
