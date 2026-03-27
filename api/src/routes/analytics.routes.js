@@ -78,7 +78,22 @@ router.get('/overview', requireAuth, async (req, res) => {
       requestId
     });
 
-    res.json({ overview });
+    res.json({
+      success: true,
+      data: {
+        totalEmployees: overview.totalEmployees,
+        assessedThisMonth: overview.completedSessions,
+        needingAttention: overview.activeAlerts,
+        pendingInvitations: 0,
+        avgWellnessScore: overview.avgWellnessScore,
+        completionRate: overview.completionRate,
+        criticalAlerts: overview.criticalAlerts,
+        totalSessions: overview.totalSessions,
+        riskDistribution: null,
+        activityData: [],
+        pendingActions: [],
+      }
+    });
   } catch (err) {
     logger.error('Failed to get overview stats', { error: err.message });
     res.status(500).json({ error: 'Failed to get overview' });
