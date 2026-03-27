@@ -626,10 +626,7 @@ router.post('/request', requireAuth, async (req, res) => {
     const employeeId = (req.user.userId || (req.user.userId || req.user._id))?.toString();
     const { tenantId } = req.user;
 
-    if (!reason) {
-      return res.status(400).json({ success: false, error: { message: 'Reason is required' } });
-    }
-
+    // reason is optional — UI labels it as such
     // Find an available clinician in the same tenant
     const clinician = await User.findOne({
       tenantId,
