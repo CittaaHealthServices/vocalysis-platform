@@ -30,12 +30,8 @@ const upload = multer({
 });
 
 // Job queue for background processing
-const assessmentQueue = new Bull('assessments', {
-  redis: {
-    host: process.env.REDIS_HOST || 'localhost',
-    port: process.env.REDIS_PORT || 6379
-  }
-});
+// ✅ Fix: queue name must match worker ('audio-analysis'), use REDIS_URL like the worker does
+const assessmentQueue = new Bull('audio-analysis', process.env.REDIS_URL || `redis://${process.env.REDIS_HOST || 'localhost'}:${process.env.REDIS_PORT || 6379}`);
 
 /**
  * POST /sessions
@@ -150,10 +146,14 @@ router.post('/', requireAuth, requireRole(['EMPLOYEE', 'HR_ADMIN', 'CLINICIAN'])
     try {
       await assessmentQueue.add({
         sessionId: session._id,
-        audioBuffer: req.file.buffer,
-        audioFileName: req.file.originalname,
+        // ✅ Fix: processor expects base64 string (uses Buffer.from(audioBuffer, 'base64'))
+        audioBuffer: req.file.buffer.toString('base64'),
+        // ✅ Fix: processor destructures 'filename', not 'audioFileName'
+        filename: req.file.originalname,
         tenantId,
-        employeeId: targetEmployeeId,
+        // ✅ Fix: processor destructures 'patientId', not 'employeeId'
+        patientId: targetEmployeeId,
+        clinicianId: userRole !== 'EMPLOYEE' ? userId : undefined,
         userId,
         requestId
       }, {
