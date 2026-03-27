@@ -127,7 +127,7 @@ _seedRouter.post('/', async (req, res) => {
     for (const u of toCreate) {
       const existing = await User.findOne({ email: u.email });
       if (!existing) {
-        await User.create({ ...u, tenantId, password: hash, isActive: true });
+        await User.create({ ...u, tenantId, passwordHash: hash, isActive: true });
         results.push({ created: true, ...u });
       } else {
         results.push({ created: false, existing: true, email: u.email });
