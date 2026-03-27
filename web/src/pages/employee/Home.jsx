@@ -7,7 +7,8 @@ import api from '../../services/api'
 
 export const MyWellnessHome = () => {
   const navigate = useNavigate()
-  const { data: wellness, isLoading } = useApi(['wellness', 'home'], () => api.get('/my/wellness'))
+  const { data: wellnessResponse, isLoading } = useApi(['wellness', 'home'], () => api.get('/my/wellness'))
+  const wellness = wellnessResponse?.data
 
   if (isLoading) return <LoadingScreen />
 
@@ -64,14 +65,16 @@ export const MyWellnessHome = () => {
         <Card className="p-6">
           <h3 className="font-semibold text-app mb-4">Recent Check-ins</h3>
           <div className="space-y-2">
-            {wellness?.recentCheckins?.map((checkin, idx) => (
+            {wellness?.recentSessions?.length > 0 ? wellness.recentSessions.map((checkin, idx) => (
               <div key={idx} className="flex items-center justify-between text-sm">
                 <span className="text-gray-600">
                   {new Date(checkin.date).toLocaleDateString()}
                 </span>
                 <span className="font-medium text-app">{checkin.score}</span>
               </div>
-            ))}
+            )) : (
+              <p className="text-sm text-gray-500">No recent check-ins yet.</p>
+            )}
           </div>
         </Card>
       </div>
@@ -92,12 +95,12 @@ export const MyWellnessHome = () => {
             {wellness.upcomingConsultations.map((consultation, idx) => (
               <div key={idx} className="p-4 bg-gradient-to-r from-blue-50 to-sky-50 rounded-xl border border-blue-100">
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-semibold text-app">{consultation.clinicianName}</p>
+                  <p className="text-sm font-semibold text-app">{consultation.clinician}</p>
                   <span className="text-xs text-blue-600 font-medium bg-blue-100 px-2 py-0.5 rounded-full">Upcoming</span>
                 </div>
                 <p className="text-xs text-gray-500 mb-3">
-                  {new Date(consultation.startTime).toLocaleDateString()}{' '}
-                  at {new Date(consultation.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  {new Date(consultation.scheduledAt).toLocaleDateString()}{' '}
+                  at {new Date(consultation.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </p>
                 {consultation.meetLink && (
                   <button
