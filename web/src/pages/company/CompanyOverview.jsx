@@ -4,7 +4,7 @@ import { RiskDonut } from '../../components/charts/RiskDonut'
 import api from '../../services/api'
 
 export const CompanyOverview = () => {
-  const { data: overview, isLoading } = useApi(['company', 'overview'], () => api.get('/company/overview'))
+  const { data: overview, isLoading } = useApi(['company', 'overview'], () => api.get('/company/overview').then(r => r.data))
 
   if (isLoading) return <LoadingScreen />
 
