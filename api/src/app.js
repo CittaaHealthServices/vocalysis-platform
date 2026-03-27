@@ -107,7 +107,7 @@ app.use('/eap', eapRoutes);
 const _seedRouter = express.Router();
 _seedRouter.post('/', async (req, res) => {
   try {
-    if (req.headers['x-seed-secret'] !== 'cittaa-seed-2024') {
+    if (req.body?.secret !== 'cittaa-seed-2024') {
       return res.status(403).json({ error: 'forbidden' });
     }
     const bcrypt = require('bcryptjs');
