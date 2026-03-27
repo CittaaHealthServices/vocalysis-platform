@@ -46,12 +46,15 @@ router.patch('/me', requireAuth, async (req, res) => {
 
 // ============================================================================
 // GET /users — list users in tenant (admin/hr only)
+//   Super admins may pass ?tenantId=xxx to list users for any tenant
 // ============================================================================
 router.get('/', requireAuth, requireRole(['COMPANY_ADMIN', 'HR_ADMIN', 'CITTAA_SUPER_ADMIN']), async (req, res) => {
   try {
-    const { tenantId } = req.user;
+    const isSuperAdmin = req.user.role === 'CITTAA_SUPER_ADMIN';
+    // Super admins can specify a target tenantId; others are scoped to their own
+    const targetTenantId = (isSuperAdmin && req.query.tenantId) ? req.query.tenantId : req.user.tenantId;
     const { role, page = 1, limit = 50, search } = req.query;
-    const query = { tenantId, isActive: true };
+    const query = { tenantId: targetTenantId };
     if (role) query.role = role;
     if (search) {
       const re = new RegExp(search, 'i');
@@ -65,6 +68,82 @@ router.get('/', requireAuth, requireRole(['COMPANY_ADMIN', 'HR_ADMIN', 'CITTAA_S
     res.json({ success: true, data: users, meta: { total, page: Number(page), limit: Number(limit) } });
   } catch (err) {
     res.status(500).json({ success: false, error: { message: 'Failed to list users' } });
+  }
+});
+
+// ============================================================================
+// POST /users — create a user in any tenant (super admin only)
+// ============================================================================
+router.post('/', requireAuth, requireRole(['CITTAA_SUPER_ADMIN', 'COMPANY_ADMIN']), async (req, res) => {
+  try {
+    const {
+      email, firstName, lastName, role, tenantId: bodyTenantId,
+      password, phone,
+    } = req.body;
+
+    if (!email || !firstName || !lastName || !role) {
+      return res.status(400).json({ success: false, error: { message: 'email, firstName, lastName, and role are required' } });
+    }
+
+    // Super admins can create in any tenant; company admins only in their own
+    const isSuperAdmin = req.user.role === 'CITTAA_SUPER_ADMIN';
+    const targetTenantId = (isSuperAdmin && bodyTenantId) ? bodyTenantId : req.user.tenantId;
+    if (!targetTenantId) {
+      return res.status(400).json({ success: false, error: { message: 'tenantId is required' } });
+    }
+
+    const existing = await User.findOne({ email: email.toLowerCase() });
+    if (existing) {
+      return res.status(409).json({ success: false, error: { message: 'Email already registered' } });
+    }
+
+    const crypto = require('crypto');
+    const bcrypt = require('bcryptjs');
+    const tempPassword = password || crypto.randomBytes(8).toString('hex');
+    const passwordHash = await bcrypt.hash(tempPassword, 10);
+
+    const newUser = new User({
+      email: email.toLowerCase(),
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      role,
+      tenantId: targetTenantId,
+      passwordHash,
+      isActive: true,
+      isEmailVerified: false,
+      loginAttempts: 0,
+      phone: phone || '',
+      consentRecord: { consentGiven: false, dataProcessingConsent: false },
+      notificationPreferences: { emailAlerts: true, inAppAlerts: true },
+      createdBy: req.user._id,
+    });
+    await newUser.save();
+
+    // Send welcome email with temp password
+    const emailService = require('../services/emailService');
+    emailService.sendWelcomeEmail?.({
+      to: email,
+      name: firstName,
+      loginUrl: `${process.env.PLATFORM_URL || 'https://striking-bravery-production-c13e.up.railway.app'}/login`,
+      tempPassword,
+      companyName: targetTenantId,
+    }).catch(() => {});
+
+    res.status(201).json({
+      success: true,
+      data: {
+        id: newUser._id,
+        email: newUser.email,
+        firstName: newUser.firstName,
+        lastName: newUser.lastName,
+        role: newUser.role,
+        tenantId: newUser.tenantId,
+        isActive: newUser.isActive,
+      },
+    });
+  } catch (err) {
+    logger.error('POST /users error', { error: err.message });
+    res.status(500).json({ success: false, error: { message: 'Failed to create user' } });
   }
 });
 
