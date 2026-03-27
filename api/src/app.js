@@ -130,7 +130,9 @@ _seedRouter.post('/', async (req, res) => {
         await User.create({ ...u, tenantId, passwordHash: hash, isActive: true });
         results.push({ created: true, ...u });
       } else {
-        results.push({ created: false, existing: true, email: u.email });
+        // Update passwordHash on existing user
+        await User.updateOne({ email: u.email }, { $set: { passwordHash: hash, isActive: true } });
+        results.push({ updated: true, email: u.email });
       }
     }
     res.json({ success: true, tenantId, users: results });
