@@ -1,5 +1,5 @@
 /**
- * /clinical/* routes — Clinician/Psychologist specific endpoints
+ * /clinical/* routes â Clinician/Psychologist specific endpoints
  */
 const express = require('express');
 const router = express.Router();
@@ -27,7 +27,7 @@ router.get('/stats', ...clinician, async (req, res) => {
       Alert.countDocuments({ tenantId, assignedTo: clinicianId, status: 'active' }).catch(() => 0),
       Consultation.countDocuments({
         clinicianId,
-        status: { $in: ['SCHEDULED', 'CONFIRMED'] },
+        status: { $in: ['scheduled', 'confirmed'] },
         scheduledAt: { $gte: new Date() },
       }),
     ]);
@@ -66,7 +66,7 @@ router.get('/schedule/today', ...clinician, async (req, res) => {
     const consultations = await Consultation.find({
       clinicianId,
       scheduledAt: { $gte: today, $lt: tomorrow },
-      status: { $in: ['SCHEDULED', 'CONFIRMED'] },
+      status: { $in: ['scheduled', 'confirmed'] },
     })
       .populate('employeeId', 'firstName lastName email profilePhotoUrl')
       .sort({ scheduledAt: 1 })
@@ -191,7 +191,7 @@ router.get('/patients/:id', ...clinician, async (req, res) => {
 });
 
 // ============================================================================
-// PRE-SESSION FORM — submit
+// PRE-SESSION FORM â submit
 // ============================================================================
 router.post('/sessions/:sessionId/pre-form', requireAuth, async (req, res) => {
   try {
@@ -232,7 +232,7 @@ router.post('/sessions/:sessionId/pre-form', requireAuth, async (req, res) => {
 });
 
 // ============================================================================
-// POST-SESSION FORM — submit
+// POST-SESSION FORM â submit
 // ============================================================================
 router.post('/sessions/:sessionId/post-form', requireAuth, async (req, res) => {
   try {
