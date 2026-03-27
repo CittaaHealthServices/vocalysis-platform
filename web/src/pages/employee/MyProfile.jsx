@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useAuth } from '../../hooks/useAuth'
 import { Card, Button, Input } from '../../components/ui'
 import { useForm } from 'react-hook-form'
@@ -6,15 +7,29 @@ import toast from 'react-hot-toast'
 
 export const MyProfile = () => {
   const { user } = useAuth()
-  const { register, handleSubmit } = useForm({
+  const { register, handleSubmit, reset } = useForm({
     defaultValues: {
-      firstName: user?.firstName || '',
-      lastName:  user?.lastName  || '',
-      email:     user?.email     || '',
-      phone:     user?.phone     || '',
-      department: user?.department || '',
+      firstName:  user?.firstName  || '',
+      lastName:   user?.lastName   || '',
+      email:      user?.email      || '',
+      phone:      user?.phone      || '',
+      department: user?.departmentId || '',
     },
   })
+
+  // Re-populate form once auth context user data is available
+  // (useForm captures defaultValues on mount before async auth resolves)
+  useEffect(() => {
+    if (user) {
+      reset({
+        firstName:  user.firstName  || '',
+        lastName:   user.lastName   || '',
+        email:      user.email      || '',
+        phone:      user.phone      || '',
+        department: user.departmentId || '',
+      })
+    }
+  }, [user, reset])
 
   const onSubmit = async (data) => {
     try {
