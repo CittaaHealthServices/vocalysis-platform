@@ -92,9 +92,11 @@ router.post('/', requireAuth, requireRole(['CITTAA_SUPER_ADMIN', 'COMPANY_ADMIN'
       return res.status(400).json({ success: false, error: { message: 'tenantId is required' } });
     }
 
-    const existing = await User.findOne({ email: email.toLowerCase() });
+    // Scope duplicate check to the target tenant — the same email is allowed
+    // across different tenants (e.g. a consultant working at multiple companies)
+    const existing = await User.findOne({ email: email.toLowerCase(), tenantId: targetTenantId });
     if (existing) {
-      return res.status(409).json({ success: false, error: { message: 'Email already registered' } });
+      return res.status(409).json({ success: false, error: { message: 'A user with this email already exists in this organisation' } });
     }
 
     const crypto = require('crypto');
@@ -186,8 +188,9 @@ router.post('/clinicians', requireAuth, requireRole(['COMPANY_ADMIN', 'CITTAA_SU
       return res.status(400).json({ success: false, error: { message: 'Role must be CLINICAL_PSYCHOLOGIST or SENIOR_CLINICIAN' } });
     }
 
-    const existing = await User.findOne({ email: email.toLowerCase() });
-    if (existing) return res.status(409).json({ success: false, error: { message: 'Email already registered' } });
+    // Scope to tenant — same email allowed across different tenants
+    const existing = await User.findOne({ email: email.toLowerCase(), tenantId: req.user.tenantId });
+    if (existing) return res.status(409).json({ success: false, error: { message: 'A user with this email already exists in this organisation' } });
 
     const tenantId = req.body.tenantId || req.user.tenantId;
 
