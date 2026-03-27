@@ -81,6 +81,7 @@ module.exports = async function audioAnalysisProcessor(job) {
 
     sessionDoc.analysisResults = analysisResult;
     sessionDoc.analysisStatus = 'completed';
+    sessionDoc.status = 'completed';   // ✅ Fix: frontend polls session.status, not analysisStatus
     sessionDoc.analyzedAt = new Date();
     await sessionDoc.save();
     logger.info('Session document updated with analysis results');
