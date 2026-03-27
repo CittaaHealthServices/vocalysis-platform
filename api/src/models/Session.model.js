@@ -194,9 +194,19 @@ const sessionSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['draft', 'submitted', 'reviewed', 'completed', 'archived'],
+      enum: ['draft', 'submitted', 'processing', 'reviewed', 'completed', 'failed', 'archived'],
       default: 'draft',
     },
+    // Check-in tracking fields (set by wellness check-in flow)
+    createdBy: { type: String, index: true },
+    notes: String,
+    audioFileName: String,
+    audioMimeType: String,
+    audioFileSize: Number,
+    audioFeatures: { type: mongoose.Schema.Types.Mixed },
+    // Daily check-in metadata
+    checkInIndex: { type: Number, default: 1 }, // 1-12 within the day
+    checkInDate: { type: String, index: true },  // YYYY-MM-DD for fast daily count queries
     reviewedBy: String,
     consentVerified: Boolean,
     isAnonymized: Boolean,
