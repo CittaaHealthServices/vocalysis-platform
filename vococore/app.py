@@ -13,6 +13,7 @@ from quality_check import QualityChecker
 from extractor import FeatureExtractor
 from fallback_scorer import DeterministicScorer
 from ml_scorer import get_scorer
+from elevenlabs_trainer import start_retrain, get_retrain_status
 
 
 # Configure logging - no audio content or feature values logged
@@ -173,6 +174,47 @@ def create_app():
                 'code': 'SCORE_ERROR',
                 'message': 'Internal server error during scoring'
             }}), 500
+
+    @app.route('/retrain', methods=['POST'])
+    @require_internal_auth
+    def retrain():
+        """
+        Trigger ElevenLabs-based model retraining in the background.
+
+        Uses ELEVENLABS_API_KEY from environment (set in Railway).
+        Generates Indian voice samples → extracts features → fine-tunes model → hot-swaps scorer.
+
+        Returns immediately with job status. Poll /retrain/status for progress.
+        """
+        api_key = os.environ.get('ELEVENLABS_API_KEY')
+        if not api_key:
+            return jsonify({'success': False, 'error': {
+                'code': 'NO_API_KEY',
+                'message': 'ELEVENLABS_API_KEY not set in environment'
+            }}), 400
+
+        started, message = start_retrain(api_key)
+        if not started:
+            return jsonify({'success': False, 'error': {
+                'code': 'ALREADY_RUNNING',
+                'message': message
+            }}), 409
+
+        return jsonify({
+            'success': True,
+            'message': message,
+            'note': 'Poll /retrain/status for progress. Takes ~10-15 minutes on first run.',
+        }), 202
+
+    @app.route('/retrain/status', methods=['GET'])
+    @require_internal_auth
+    def retrain_status():
+        """
+        Poll retraining progress.
+        Returns: { state: idle|running|complete|error, progress, started_at, error }
+        """
+        status = get_retrain_status()
+        return jsonify({'success': True, 'status': status}), 200
 
     @app.route('/extract', methods=['POST'])
     @require_internal_auth
