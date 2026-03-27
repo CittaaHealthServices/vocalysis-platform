@@ -6,9 +6,9 @@ import api from '../../services/api'
 import toast from 'react-hot-toast'
 
 const PLANS = [
-  { value: 'starter',    label: 'Starter',       price: '₹29,000/mo',  desc: 'Up to 100 employees · Core wellness tools' },
-  { value: 'pro',        label: 'Professional',  price: '₹79,000/mo',  desc: 'Up to 500 employees · Advanced analytics + EAP' },
-  { value: 'enterprise', label: 'Enterprise',    price: 'Custom',      desc: 'Unlimited employees · Dedicated support + SLA' },
+  { value: 'starter',    label: 'Starter',       price: 'â¹29,000/mo',  desc: 'Up to 100 employees Â· Core wellness tools' },
+  { value: 'pro',        label: 'Professional',  price: 'â¹79,000/mo',  desc: 'Up to 500 employees Â· Advanced analytics + EAP' },
+  { value: 'enterprise', label: 'Enterprise',    price: 'Custom',      desc: 'Unlimited employees Â· Dedicated support + SLA' },
 ]
 
 export const Billing = () => {
@@ -16,7 +16,7 @@ export const Billing = () => {
   const [selectedPlan, setSelectedPlan] = useState('')
   const [changing, setChanging] = useState(false)
 
-  const { data: billing, isLoading } = useApi(['billing'], () => api.get('/company/billing'))
+  const { data: billing, isLoading } = useApi(['billing'], () => api.get('/company/billing').then(r => r.data))
 
   const handleChangePlan = async () => {
     if (!selectedPlan) {
@@ -26,7 +26,7 @@ export const Billing = () => {
     setChanging(true)
     try {
       await api.post('/company/billing/change-plan', { tier: selectedPlan })
-      toast.success('Plan change request submitted — our team will be in touch shortly')
+      toast.success('Plan change request submitted â our team will be in touch shortly')
       setChangePlanOpen(false)
     } catch (err) {
       toast.error(err?.error?.message || 'Failed to submit plan change')
@@ -36,7 +36,7 @@ export const Billing = () => {
   }
 
   const handleUpdatePayment = () => {
-    toast('To update your payment method, please contact support@cittaa.in', { icon: 'ℹ️', duration: 5000 })
+    toast('To update your payment method, please contact support@cittaa.in', { icon: 'â¹ï¸', duration: 5000 })
   }
 
   if (isLoading) return <LoadingScreen />
@@ -50,11 +50,11 @@ export const Billing = () => {
         <div className="grid grid-cols-2 gap-6 mb-6">
           <div>
             <p className="text-sm text-gray-600">Plan Type</p>
-            <p className="text-2xl font-bold text-cittaa-700">{billing?.planName || '—'}</p>
+            <p className="text-2xl font-bold text-cittaa-700">{billing?.planName || 'â'}</p>
           </div>
           <div>
             <p className="text-sm text-gray-600">Monthly Cost</p>
-            <p className="text-2xl font-bold text-cittaa-700">{billing?.monthlyCost || '—'}</p>
+            <p className="text-2xl font-bold text-cittaa-700">{billing?.monthlyCost || 'â'}</p>
           </div>
         </div>
         <Button variant="secondary" onClick={() => setChangePlanOpen(true)}>Change Plan</Button>
@@ -64,7 +64,7 @@ export const Billing = () => {
         <h2 className="text-xl font-semibold text-app mb-4">Payment Method</h2>
         <p className="text-gray-600 mb-4">
           {billing?.paymentMethod?.last4
-            ? `•••• •••• •••• ${billing.paymentMethod.last4}`
+            ? `â¢â¢â¢â¢ â¢â¢â¢â¢ â¢â¢â¢â¢ ${billing.paymentMethod.last4}`
             : 'No payment method on file'}
         </p>
         <Button variant="secondary" onClick={handleUpdatePayment}>Update Payment Method</Button>
