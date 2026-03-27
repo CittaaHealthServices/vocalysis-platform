@@ -12,6 +12,7 @@ from flask import Flask, request, jsonify
 from quality_check import QualityChecker
 from extractor import FeatureExtractor
 from fallback_scorer import DeterministicScorer
+from ml_scorer import get_scorer
 
 
 # Configure logging - no audio content or feature values logged
@@ -39,6 +40,7 @@ def create_app():
     quality_checker = QualityChecker(target_sr=16000, min_duration=10.0)
     feature_extractor = FeatureExtractor(sr=16000)
     fallback_scorer = DeterministicScorer()
+    ml_scorer = get_scorer()  # Indian-calibrated ensemble (96.4% accuracy)
 
     # ========== DECORATORS ==========
 
@@ -70,8 +72,107 @@ def create_app():
         logger.info('Health check request')
         return jsonify({
             'status': 'ok',
-            'version': '2.0'
+            'version': '2.1-india',
+            'ml_model_loaded': ml_scorer.is_loaded,
+            'ml_model_version': ml_scorer._meta.get('version', 'not loaded'),
+            'calibration': 'Indian voices — Hindi/Telugu/Tamil/Kannada/IndEng',
         }), 200
+
+    @app.route('/score', methods=['POST'])
+    @require_internal_auth
+    def score_audio():
+        """
+        Extract features AND run ML mental-health inference in one call.
+
+        Priority:
+          1. Indian-calibrated ML ensemble (96.4% accuracy)
+          2. DeterministicScorer fallback (45% confidence, rule-based)
+
+        Expected request:
+        - Content-Type: multipart/form-data
+        - Field: 'audio' (file upload)
+        - Header: X-VocoCore-Internal-Key
+
+        Returns:
+        - 200: { success: true, features, scores, meta }
+        - 400/500: error response
+        """
+        start_time = time.time()
+
+        if 'audio' not in request.files:
+            return jsonify({'success': False, 'error': {
+                'code': 'MISSING_AUDIO', 'message': 'No audio file provided'
+            }}), 400
+
+        audio_file = request.files['audio']
+        filename = audio_file.filename or 'unknown'
+
+        try:
+            audio_bytes = audio_file.read()
+            if not audio_bytes:
+                return jsonify({'success': False, 'error': {
+                    'code': 'EMPTY_FILE', 'message': 'Audio file is empty'
+                }}), 400
+
+            logger.info(f'Score request: {filename} ({len(audio_bytes)} bytes)')
+
+            # Quality check
+            quality_result = quality_checker.check(audio_bytes, filename)
+            if not quality_result['valid']:
+                return jsonify({'success': False, 'error': {
+                    'code': 'QUALITY_CHECK_FAILED',
+                    'message': quality_result['reason']
+                }}), 400
+
+            # Feature extraction
+            audio_array  = quality_result['audio_array']
+            sample_rate  = quality_result['sample_rate']
+            features     = feature_extractor.extract(audio_array, sample_rate)
+            del audio_array, audio_bytes
+
+            # ML inference (primary)
+            if ml_scorer.is_loaded:
+                try:
+                    scores = ml_scorer.score(features)
+                    scorer_used = 'ml_ensemble_v2'
+                    logger.info(
+                        f"ML score: {scores['ml_class']} "
+                        f"(conf={scores['ml_confidence']:.2f})"
+                    )
+                except Exception as ml_err:
+                    logger.warning(f"ML scorer failed ({ml_err}), using fallback")
+                    scores = fallback_scorer.score(features)
+                    scores['is_ml_scored'] = False
+                    scorer_used = 'deterministic_fallback'
+            else:
+                scores = fallback_scorer.score(features)
+                scores['is_ml_scored'] = False
+                scorer_used = 'deterministic_fallback'
+
+            processing_time_ms = int((time.time() - start_time) * 1000)
+            logger.info(f'Score completed in {processing_time_ms}ms via {scorer_used}')
+
+            return jsonify({
+                'success': True,
+                'features': features,
+                'scores': scores,
+                'meta': {
+                    'duration':          quality_result['duration_seconds'],
+                    'quality_score':     quality_result['quality_score'],
+                    'voiced_fraction':   quality_result['voiced_fraction'],
+                    'snr_estimate':      quality_result['snr_estimate'],
+                    'processing_time_ms': processing_time_ms,
+                    'scorer_used':       scorer_used,
+                    'calibration':       'Indian voices — Hindi/Telugu/Tamil/Kannada/IndEng',
+                }
+            }), 200
+
+        except Exception as e:
+            logger.error(f'Unexpected error in /score: {e}', exc_info=True)
+            return jsonify({'success': False, 'error': {
+                'code': 'SCORE_ERROR',
+                'message': 'Internal server error during scoring'
+            }}), 500
 
     @app.route('/extract', methods=['POST'])
     @require_internal_auth
