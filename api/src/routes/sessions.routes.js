@@ -186,14 +186,34 @@ assessmentQueue.process(async (job) => {
       throw new Error('Session not found');
     }
 
-    // Extract features
-    logger.info('Extracting audio features', { sessionId });
-    const features = await featureExtractionService.extract(audioBuffer, audioFileName);
-    session.audioFeatures = features;
-
-    // Analyze with VocaCore
-    logger.info('Running VocaCore analysis', { sessionId });
-    const vocacoreResults = await vocacoreEngine.analyze(features);
+    // Primary: send raw audio to VocoCore /score (Indian ML model, 96.4% accuracy)
+    // This does feature extraction + ML inference in one call.
+    logger.info('Running VocoCore ML analysis (Indian-calibrated)', { sessionId });
+    let vocacoreResults;
+    try {
+      vocacoreResults = await vocacoreEngine.analyzeAudio(
+        Buffer.isBuffer(audioBuffer) ? audioBuffer : Buffer.from(audioBuffer),
+        audioFileName
+      );
+      // Populate audioFeatures from ML response (saves a separate /extract call)
+      if (vocacoreResults.extractedFeatures &&
+          Object.keys(vocacoreResults.extractedFeatures).length > 0) {
+        session.audioFeatures = vocacoreResults.extractedFeatures;
+      } else {
+        // ML service returned no features — run separate extraction as fallback
+        logger.info('Extracting audio features separately', { sessionId });
+        const features = await featureExtractionService.extract(audioBuffer, audioFileName);
+        session.audioFeatures = features;
+      }
+    } catch (mlErr) {
+      // /score completely unreachable — fall back to separate extract + analyze
+      logger.warn('analyzeAudio failed, falling back to extract+analyze', {
+        error: mlErr.message, sessionId
+      });
+      const features = await featureExtractionService.extract(audioBuffer, audioFileName);
+      session.audioFeatures = features;
+      vocacoreResults = await vocacoreEngine.analyze(features);
+    }
     session.vocacoreResults = vocacoreResults;
 
     // Generate wellnessOutput for employee
