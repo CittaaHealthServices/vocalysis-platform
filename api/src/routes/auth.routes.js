@@ -36,7 +36,7 @@ const ACCESS_TOKEN_EXPIRY = '15m';
 const ACCESS_TOKEN_EXPIRY_SECONDS = 900;
 const REFRESH_TOKEN_EXPIRY = '7d';
 
-// JWT secrets — consistent with auth.middleware.js
+// JWT secrets â consistent with auth.middleware.js
 const JWT_ACCESS_SECRET  = process.env.JWT_ACCESS_SECRET  || process.env.JWT_SECRET  || 'access-secret';
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'refresh-secret';
 
@@ -57,20 +57,24 @@ function _isValidPassword(password) {
  */
 function safeUser(user) {
   return {
-    id:        user._id,
-    userId:    user.userId,
-    email:     user.email,
-    firstName: user.firstName,
-    lastName:  user.lastName,
-    role:      user.role,
-    tenantId:  user.tenantId,
+    id:              user._id,
+    userId:          user.userId,
+    email:           user.email,
+    firstName:       user.firstName,
+    lastName:        user.lastName,
+    role:            user.role,
+    tenantId:        user.tenantId,
+    phone:           user.phone           || null,
+    departmentId:    user.departmentId    || null,
+    jobTitle:        user.jobTitle        || null,
+    profilePhotoUrl: user.profilePhotoUrl || null,
   };
 }
 
-/* ─────────────────────────────────────────────────────────────────────────── */
+/* âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
 
 /**
- * POST /auth/register/self   — PUBLIC self-registration for individual users
+ * POST /auth/register/self   â PUBLIC self-registration for individual users
  * Creates an EMPLOYEE account under the shared 'individual' tenant
  */
 router.post('/register/self', async (req, res) => {
@@ -133,7 +137,7 @@ router.post('/register/self', async (req, res) => {
   }
 });
 
-/* ─────────────────────────────────────────────────────────────────────────── */
+/* âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
 
 /**
  * POST /auth/register
@@ -220,7 +224,7 @@ router.post('/register', requireAuth, async (req, res) => {
   }
 });
 
-/* ─────────────────────────────────────────────────────────────────────────── */
+/* âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
 
 /**
  * POST /auth/login
@@ -301,7 +305,7 @@ router.post('/login', async (req, res) => {
       }
     }
 
-    // Success — clear failed attempts
+    // Success â clear failed attempts
     await redis.del(`login_attempts:${email.toLowerCase()}`).catch(() => {});
 
     user.lastLoginAt  = new Date();
@@ -343,7 +347,7 @@ router.post('/login', async (req, res) => {
   }
 });
 
-/* ─────────────────────────────────────────────────────────────────────────── */
+/* âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
 
 /**
  * POST /auth/verify
@@ -384,7 +388,7 @@ router.post('/verify', async (req, res) => {
   }
 });
 
-/* ─────────────────────────────────────────────────────────────────────────── */
+/* âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
 
 /**
  * POST /auth/refresh
@@ -432,7 +436,7 @@ router.post('/refresh', async (req, res) => {
   }
 });
 
-/* ─────────────────────────────────────────────────────────────────────────── */
+/* âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
 
 /**
  * POST /auth/logout
@@ -464,7 +468,7 @@ router.post('/logout', requireAuth, async (req, res) => {
   }
 });
 
-/* ─────────────────────────────────────────────────────────────────────────── */
+/* âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
 
 /**
  * POST /auth/forgot-password
@@ -506,7 +510,7 @@ router.post('/forgot-password', async (req, res) => {
   }
 });
 
-/* ─────────────────────────────────────────────────────────────────────────── */
+/* âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
 
 /**
  * POST /auth/reset-password
@@ -555,7 +559,7 @@ router.post('/reset-password', async (req, res) => {
   }
 });
 
-/* ─────────────────────────────────────────────────────────────────────────── */
+/* âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
 
 /**
  * POST /auth/mfa/setup
@@ -607,11 +611,11 @@ router.post('/mfa/verify', requireAuth, async (req, res) => {
   }
 });
 
-/* ─────────────────────────────────────────────────────────────────────────── */
+/* âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */
 
 /**
  * GET /auth/google/login
- * Initiate Google Sign-In (public — no auth required)
+ * Initiate Google Sign-In (public â no auth required)
  */
 router.get('/google/login', (req, res) => {
   try {
@@ -625,7 +629,7 @@ router.get('/google/login', (req, res) => {
 
 /**
  * GET /auth/google
- * Connect Google Calendar (authenticated — from settings page)
+ * Connect Google Calendar (authenticated â from settings page)
  */
 router.get('/google', requireAuth, (req, res) => {
   try {
@@ -657,7 +661,7 @@ router.get('/google/callback', async (req, res) => {
     const stateData = JSON.parse(Buffer.from(state, 'base64').toString());
     const tokens = await googleService.exchangeCode(code);
 
-    // ── GOOGLE SIGN-IN flow ──────────────────────────────────────────────
+    // ââ GOOGLE SIGN-IN flow ââââââââââââââââââââââââââââââââââââââââââââââ
     if (stateData.purpose === 'login') {
       const profile = await googleService.getGoogleProfile(tokens.access_token);
       const email   = profile.email?.toLowerCase();
@@ -669,7 +673,7 @@ router.get('/google/callback', async (req, res) => {
       // Find existing user by email
       const user = await User.findOne({ email }).select('+passwordHash');
       if (!user) {
-        // Not registered — check if any tenant allows this domain
+        // Not registered â check if any tenant allows this domain
         const domain = email.split('@')[1];
         const matchingTenant = await Tenant.findOne({
           'settings.allowedEmailDomains': domain,
@@ -680,7 +684,7 @@ router.get('/google/callback', async (req, res) => {
           return res.redirect(`${platformUrl}/login?google=failed&error=domain_not_allowed`);
         }
 
-        // Domain is allowed but user not created yet — redirect to notify
+        // Domain is allowed but user not created yet â redirect to notify
         return res.redirect(`${platformUrl}/login?google=failed&error=not_registered`);
       }
 
@@ -730,7 +734,7 @@ router.get('/google/callback', async (req, res) => {
       return res.redirect(`${platformUrl}/auth/callback?token=${accessToken}&dest=${encodeURIComponent(destination)}`);
     }
 
-    // ── CALENDAR CONNECT flow ────────────────────────────────────────────
+    // ââ CALENDAR CONNECT flow ââââââââââââââââââââââââââââââââââââââââââââ
     const { userId, tenantId } = stateData;
     const user = await User.findOneAndUpdate(
       { userId },
