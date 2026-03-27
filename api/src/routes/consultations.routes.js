@@ -152,7 +152,7 @@ router.post('/', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'SENIOR_
           organizerRefreshToken: clinician.googleProfile.refreshToken,
           attendeeEmails: [employee.email, clinician.email],
           title: `Wellness Consultation - ${employee.firstName} ${employee.lastName}`,
-          description: `VocaCore™ Wellness Consultation\n\nConsultant: ${clinician.firstName} ${clinician.lastName}\nEmployee: ${employee.firstName} ${employee.lastName}\n\n${notes || ''}`,
+          description: `VocaCoreâ¢ Wellness Consultation\n\nConsultant: ${clinician.firstName} ${clinician.lastName}\nEmployee: ${employee.firstName} ${employee.lastName}\n\n${notes || ''}`,
           startDateTime: new Date(scheduledAt).toISOString(),
           endDateTime: endDateTime.toISOString(),
           timeZone: 'Asia/Kolkata',
@@ -626,7 +626,7 @@ router.post('/request', requireAuth, async (req, res) => {
     const employeeId = (req.user.userId || (req.user.userId || req.user._id))?.toString();
     const { tenantId } = req.user;
 
-    // reason is optional — UI labels it as such
+    // reason is optional â UI labels it as such
     // Find an available clinician in the same tenant
     const clinician = await User.findOne({
       tenantId,
@@ -636,23 +636,29 @@ router.post('/request', requireAuth, async (req, res) => {
 
     const consultation = await Consultation.create({
       employeeId,
-      clinicianId: clinician?._id || null,
+      clinicianId: clinician?._id?.toString() || 'UNASSIGNED',
       tenantId,
-      type,
-      mode: type,
-      status: 'PENDING',
-      employeeNotes: reason,
+      consultationType: 'routine',
+      mode: type === 'offline' ? 'offline' : 'online',
+      status: 'scheduled',
+      notes: reason || '',
+      scheduledBy: employeeId,
       scheduledAt: preferredDate
         ? new Date(`${preferredDate}T${preferredTime || '10:00'}`)
         : new Date(Date.now() + 3 * 24 * 60 * 60 * 1000), // 3 days from now
       durationMinutes: 50,
+      metadata: {
+        source: 'employee_portal',
+        employeeSelfScheduled: true,
+        priority: 'normal',
+      },
     });
 
     res.status(201).json({
       success: true,
       data: {
         id: consultation._id,
-        status: 'PENDING',
+        status: consultation.status,
         message: 'Consultation request submitted. A clinician will confirm shortly.',
         scheduledAt: consultation.scheduledAt,
       },
