@@ -25,9 +25,11 @@ router.get('/overview', ...companyOrHR, async (req, res) => {
       success: true,
       data: {
         totalEmployees,
-        activeAlerts,
-        healthScore: 78, // placeholder — replace with real aggregation
+        riskAlerts: activeAlerts,
+        averageWellness: 78,
+        activeAssessments: 0,
         participationRate: 65,
+        distribution: null,
       },
     });
   } catch (err) {
@@ -189,7 +191,7 @@ router.get('/api-keys', ...companyAdmin, async (req, res) => {
       data: keys.map(k => ({
         id: k._id,
         name: k.name,
-        keyPreview: k.keyHashPrefix || '••••••••',
+        keyPreview: k.keyHashPrefix || 'â¢â¢â¢â¢â¢â¢â¢â¢',
         createdAt: k.createdAt,
         lastUsedAt: k.lastUsedAt || null,
       })),
