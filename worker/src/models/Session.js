@@ -1,9 +1,12 @@
 const mongoose = require('mongoose');
 
 const sessionSchema = new mongoose.Schema({
-  tenantId: { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant', required: true },
-  patientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
-  clinicianId: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
+  // ✅ Fix: API stores these as plain strings (UUID / "cittaa-3z0z"), not ObjectIds
+  tenantId: { type: String, required: true },
+  patientId: { type: String },
+  clinicianId: { type: String },
+  // status field kept flexible so the worker can mark sessions failed
+  status: { type: String },
   audioDeletedAt: Date,
   audioDeleteConfirmed: { type: Boolean, default: false },
   analysisResults: mongoose.Schema.Types.Mixed,

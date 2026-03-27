@@ -146,8 +146,9 @@ module.exports = async function audioAnalysisProcessor(job) {
     job.progress(65);
 
     if (alertTriggered && alertData) {
-      const employee = await Employee.findById(patientId);
-      const clinician = await Employee.findById(clinicianId);
+      // ✅ Fix: patientId / clinicianId are UUID strings, look up by employeeId field
+      const employee = await Employee.findOne({ employeeId: patientId });
+      const clinician = clinicianId ? await Employee.findOne({ employeeId: clinicianId }) : null;
 
       if (clinician && clinician.email) {
         await queues.emailNotifications.add(
@@ -173,7 +174,14 @@ module.exports = async function audioAnalysisProcessor(job) {
     logger.info('Step 7: Queueing webhook delivery');
     job.progress(75);
 
-    const tenant = await Tenant.findById(tenantId);
+    // ✅ Fix: tenantId is a custom string ("cittaa-3z0z"), not a MongoDB ObjectId.
+    // The worker's Tenant model doesn't have a tenantId field, so we skip this lookup gracefully.
+    let tenant = null;
+    try {
+      tenant = await Tenant.findById(tenantId);
+    } catch (e) {
+      logger.warn('Tenant lookup skipped (tenantId is not an ObjectId): %s', e.message);
+    }
     if (tenant && tenant.webhookConfig && tenant.webhookConfig.url && tenant.webhookConfig.enabled) {
       const webhookPayload = {
         event: 'session.analysis_complete',
@@ -203,7 +211,8 @@ module.exports = async function audioAnalysisProcessor(job) {
     logger.info('Step 8: Updating employee wellness profile');
     job.progress(85);
 
-    const employee = await Employee.findById(patientId);
+    // ✅ Fix: patientId is a UUID string, look up by employeeId field
+    const employee = await Employee.findOne({ employeeId: patientId });
     if (employee) {
       if (!employee.wellnessProfile) {
         employee.wellnessProfile = {};
@@ -256,6 +265,22 @@ module.exports = async function audioAnalysisProcessor(job) {
     };
   } catch (error) {
     logger.error('Audio analysis failed for session %s: %s', sessionId, error.message);
+    // ✅ Fix: mark session as failed so the frontend stops polling
+    try {
+      const Session = require('../models/Session');
+      if (sessionDoc) {
+        sessionDoc.analysisStatus = 'failed';
+        sessionDoc.status = 'failed';
+        await sessionDoc.save();
+      } else if (sessionId) {
+        await Session.findByIdAndUpdate(sessionId, {
+          analysisStatus: 'failed',
+          status: 'failed'
+        });
+      }
+    } catch (saveErr) {
+      logger.error('Could not mark session as failed: %s', saveErr.message);
+    }
     throw error;
   }
 };
