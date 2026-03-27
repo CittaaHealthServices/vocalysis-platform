@@ -62,18 +62,17 @@ export const WellnessCheckIn = () => {
     formData.append('type', 'wellness-checkin')
 
     try {
-      const response = await api.post('/sessions', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
-      // ✅ Fix: response.data.session.id (not response.data.id)
-      const newSessionId = response.data?.session?.id || response.data?.session?._id
+      // Note: do NOT set Content-Type manually — let browser set multipart boundary
+      const response = await api.post('/sessions', formData)
+      // api interceptor returns response.data directly, so response IS the body
+      const newSessionId = response?.session?.id || response?.session?._id
       if (!newSessionId) throw new Error('No session ID returned')
 
       setSessionId(newSessionId)
 
       // Update daily progress
-      if (response.data?.dailyProgress) {
-        setDailyProgress(response.data.dailyProgress)
+      if (response?.dailyProgress) {
+        setDailyProgress(response.dailyProgress)
       }
 
       startPolling()
