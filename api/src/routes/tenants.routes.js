@@ -28,7 +28,7 @@ router.get('/', requireAuth, requireRole(['CITTAA_SUPER_ADMIN']), async (req, re
 
     const [tenants, total] = await Promise.all([
       Tenant.find(query)
-        .select('name status monthlyAssessmentQuota usedAssessmentCount createdAt')
+        .select('displayName legalName tenantId status contractTier employeeCount createdAt')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parseInt(limit)),
@@ -68,13 +68,17 @@ router.get('/', requireAuth, requireRole(['CITTAA_SUPER_ADMIN']), async (req, re
 router.post('/', requireAuth, requireRole(['CITTAA_SUPER_ADMIN']), async (req, res) => {
   try {
     const {
-      name,
+      name,          // company display name
       industry,
-      website,
-      monthlyAssessmentQuota,
+      employeeCount,
+      country,
+      city,
       adminEmail,
       adminFirstName,
       adminLastName,
+      tier,          // 'starter' | 'professional' | 'enterprise'
+      monthlyAssessmentQuota,
+      website,
       googleConfig
     } = req.body;
     const userId = req.user._id;
@@ -82,11 +86,19 @@ router.post('/', requireAuth, requireRole(['CITTAA_SUPER_ADMIN']), async (req, r
 
     // Validate required fields
     if (!name || !adminEmail || !adminFirstName || !adminLastName) {
-      return res.status(400).json({ error: 'Missing required fields' });
+      return res.status(400).json({ error: 'Missing required fields: name, adminEmail, adminFirstName, adminLastName' });
     }
 
-    // Check if tenant already exists
-    const existingTenant = await Tenant.findOne({ name });
+    // Normalise tier — wizard sends 'pro', model enum uses 'professional'
+    const contractTier = tier === 'pro' ? 'professional' : (tier || 'starter');
+
+    // Auto-generate a URL-safe tenantId from the company name
+    const baseTenantId = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const randomSuffix = Math.random().toString(36).slice(2, 6);
+    const tenantId = `${baseTenantId}-${randomSuffix}`;
+
+    // Check if tenant already exists (by displayName)
+    const existingTenant = await Tenant.findOne({ displayName: name });
     if (existingTenant) {
       return res.status(409).json({ error: 'Tenant with this name already exists' });
     }
@@ -97,17 +109,21 @@ router.post('/', requireAuth, requireRole(['CITTAA_SUPER_ADMIN']), async (req, r
       return res.status(409).json({ error: 'Admin email already exists' });
     }
 
-    // Create tenant
+    // Create tenant — map wizard fields → model schema
     const tenant = new Tenant({
-      name,
+      tenantId,
+      displayName:  name,
+      legalName:    name,
+      type:         'corporate',
       industry,
-      website,
-      status: 'active',
+      employeeCount: Number(employeeCount) || 0,
+      city,
+      contactEmail: adminEmail,
+      contractTier,
+      status:       'active',
       monthlyAssessmentQuota: monthlyAssessmentQuota || 500,
       usedAssessmentCount: 0,
-      googleConfig: googleConfig || {
-        autoCreateMeetLinks: false
-      },
+      googleConfig: googleConfig || { autoCreateMeetLinks: false },
       createdBy: userId,
       createdAt: new Date()
     });
@@ -124,7 +140,7 @@ router.post('/', requireAuth, requireRole(['CITTAA_SUPER_ADMIN']), async (req, r
       lastName: adminLastName,
       password: hashedPassword,
       role: 'COMPANY_ADMIN',
-      tenantId: tenant._id,
+      tenantId: tenant.tenantId,   // string tenantId, not ObjectId
       isActive: true,
       createdBy: userId,
       createdAt: new Date()
@@ -154,7 +170,7 @@ router.post('/', requireAuth, requireRole(['CITTAA_SUPER_ADMIN']), async (req, r
       changeSnapshot: {
         name,
         industry,
-        monthlyAssessmentQuota,
+        contractTier,
         adminEmail
       }
     });
@@ -163,7 +179,7 @@ router.post('/', requireAuth, requireRole(['CITTAA_SUPER_ADMIN']), async (req, r
       message: 'Tenant created successfully',
       tenant: {
         id: tenant._id,
-        name: tenant.name,
+        name: tenant.displayName,
         status: tenant.status
       },
       admin: {

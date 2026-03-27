@@ -25,7 +25,7 @@ const INDUSTRIES = [
 
 const PLANS = [
   { value: 'starter',    label: 'Starter',      price: '₹29,000/mo', desc: 'Up to 100 employees · Core wellness tools'              },
-  { value: 'pro',        label: 'Professional', price: '₹79,000/mo', desc: 'Up to 500 employees · Advanced analytics + EAP'         },
+  { value: 'professional', label: 'Professional', price: '₹79,000/mo', desc: 'Up to 500 employees · Advanced analytics + EAP'         },
   { value: 'enterprise', label: 'Enterprise',   price: 'Custom',     desc: 'Unlimited employees · Dedicated support + SLA'          },
 ]
 
