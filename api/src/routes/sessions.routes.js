@@ -226,8 +226,17 @@ router.post('/', requireAuth, requireRole(['EMPLOYEE', 'HR_ADMIN', 'CLINICIAN'])
 
 /**
  * Assessment job processor
+ * ✅ Fix: removed — the merry-tranquility worker service processes all jobs.
+ * Having assessmentQueue.process() here too caused the API and worker to
+ * compete for the same jobs; the API's processor crashed (VocoCore ENOTFOUND)
+ * and set session.status='failed' before the worker could complete it.
+ *
+ * DISABLED — do not re-enable this block:
+ * assessmentQueue.process(async (job) => {
+ *   ... VocoCore calls that fail in production ...
+ * });
  */
-assessmentQueue.process(async (job) => {
+if (false) assessmentQueue.process(async (job) => {
   const { sessionId, audioBuffer, audioFileName, tenantId, employeeId, userId, requestId } = job.data;
 
   try {
@@ -364,7 +373,7 @@ assessmentQueue.process(async (job) => {
 
     throw err;
   }
-});
+}); // end of disabled block
 
 /**
  * GET /sessions/daily-progress
