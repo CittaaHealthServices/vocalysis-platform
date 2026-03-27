@@ -16,7 +16,7 @@ router.get('/overview', requireAuth, async (req, res) => {
   try {
     const tenantId = req.user.tenantId;
     const userRole = req.user.role;
-    const userId = req.user._id;
+    const userId = (req.user.userId || req.user._id);
     const requestId = req.requestId;
 
     let query = { tenantId };
@@ -93,7 +93,7 @@ router.get('/trends', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'CL
   try {
     const { period = 'week' } = req.query;
     const tenantId = req.user.tenantId;
-    const userId = req.user._id;
+    const userId = (req.user.userId || req.user._id);
     const requestId = req.requestId;
 
     let daysBack = 7;
@@ -150,7 +150,7 @@ router.get('/trends', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'CL
 router.get('/departments', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN']), async (req, res) => {
   try {
     const tenantId = req.user.tenantId;
-    const userId = req.user._id;
+    const userId = (req.user.userId || req.user._id);
     const requestId = req.requestId;
 
     const departmentData = await Session.aggregate([
@@ -209,7 +209,7 @@ router.get('/departments', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN'
  */
 router.get('/platform', requireAuth, requireRole(['CITTAA_SUPER_ADMIN']), async (req, res) => {
   try {
-    const userId = req.user._id;
+    const userId = (req.user.userId || req.user._id);
     const requestId = req.requestId;
 
     const [
@@ -276,7 +276,7 @@ router.get('/export', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN']), a
   try {
     const { format = 'csv' } = req.query;
     const tenantId = req.user.tenantId;
-    const userId = req.user._id;
+    const userId = (req.user.userId || req.user._id);
     const requestId = req.requestId;
 
     const sessions = await Session.find({ tenantId, status: 'completed' })

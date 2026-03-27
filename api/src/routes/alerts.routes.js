@@ -14,7 +14,7 @@ const alertEngine = require('../services/alertEngine');
 router.get('/', requireAuth, async (req, res) => {
   try {
     const { page = 1, limit = 20, status, alertLevel } = req.query;
-    const userId = req.user._id;
+    const userId = (req.user.userId || req.user._id);
     const userRole = req.user.role;
     const tenantId = req.user.tenantId;
     const requestId = req.requestId;
@@ -58,7 +58,7 @@ router.get('/', requireAuth, async (req, res) => {
 router.get('/stats', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'SENIOR_CLINICIAN', 'CLINICAL_PSYCHOLOGIST']), async (req, res) => {
   try {
     const tenantId = req.user.tenantId;
-    const userId = req.user._id;
+    const userId = (req.user.userId || req.user._id);
     const requestId = req.requestId;
     const stats = await alertEngine.getAlertStats(tenantId);
     await auditService.log({ userId, tenantId, role: req.user.role, action: 'ALERT_STATS_VIEWED', targetResource: 'Alert', ipAddress: req.ip, userAgent: req.get('user-agent'), requestId });
@@ -77,7 +77,7 @@ router.patch('/:id', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'SEN
   try {
     const { id } = req.params;
     const { status, note } = req.body;
-    const userId = req.user._id;
+    const userId = (req.user.userId || req.user._id);
     const tenantId = req.user.tenantId;
 
     const alert = await Alert.findOne({ _id: id, tenantId });
@@ -110,7 +110,7 @@ router.patch('/:id', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'SEN
 router.get('/:id', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user._id;
+    const userId = (req.user.userId || req.user._id);
     const userRole = req.user.role;
     const tenantId = req.user.tenantId;
     const requestId = req.requestId;
@@ -162,7 +162,7 @@ router.put('/:id/acknowledge', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_AD
   try {
     const { id } = req.params;
     const { note } = req.body;
-    const userId = req.user._id;
+    const userId = (req.user.userId || req.user._id);
     const userRole = req.user.role;
     const tenantId = req.user.tenantId;
     const requestId = req.requestId;
@@ -207,7 +207,7 @@ router.put('/:id/escalate', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN
   try {
     const { id } = req.params;
     const { escalatedTo, reason } = req.body;
-    const userId = req.user._id;
+    const userId = (req.user.userId || req.user._id);
     const userRole = req.user.role;
     const tenantId = req.user.tenantId;
     const requestId = req.requestId;
@@ -262,7 +262,7 @@ router.put('/:id/resolve', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN'
   try {
     const { id } = req.params;
     const { resolutionSummary } = req.body;
-    const userId = req.user._id;
+    const userId = (req.user.userId || req.user._id);
     const userRole = req.user.role;
     const tenantId = req.user.tenantId;
     const requestId = req.requestId;

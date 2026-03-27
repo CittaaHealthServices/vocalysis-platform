@@ -15,7 +15,7 @@ const logger = require('../utils/logger');
 // ============================================================================
 router.get('/wellness', requireAuth, async (req, res) => {
   try {
-    const userId = req.user._id.toString();
+    const userId = (req.user.userId || req.user._id).toString();
 
     // Latest sessions for mood trend
     const recentSessions = await Session.find({ patientId: userId })
@@ -83,7 +83,7 @@ router.get('/wellness', requireAuth, async (req, res) => {
 // ============================================================================
 router.get('/history', requireAuth, async (req, res) => {
   try {
-    const userId = req.user._id.toString();
+    const userId = (req.user.userId || req.user._id).toString();
     const { page = 1, limit = 20 } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
 
@@ -120,7 +120,7 @@ router.get('/history', requireAuth, async (req, res) => {
 // ============================================================================
 router.get('/consultations', requireAuth, async (req, res) => {
   try {
-    const userId = req.user._id.toString();
+    const userId = (req.user.userId || req.user._id).toString();
     const consultations = await Consultation.find({ employeeId: userId })
       .sort({ scheduledAt: -1 })
       .populate('clinicianId', 'firstName lastName clinicianProfile')
@@ -152,7 +152,7 @@ router.get('/consultations', requireAuth, async (req, res) => {
 // ============================================================================
 router.get('/profile', requireAuth, async (req, res) => {
   try {
-    const user = await User.findById(req.user._id)
+    const user = await User.findOne({ userId: req.user.userId || req.user._id })
       .select('firstName lastName email phone profilePhotoUrl gender dateOfBirth employeeId departmentId jobTitle notificationPreferences consentRecord')
       .lean();
     res.json({ success: true, data: user });

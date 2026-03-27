@@ -209,7 +209,7 @@ router.post('/api-keys', ...companyAdmin, async (req, res) => {
     const keyId = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
     const apiKey = await ApiKey.create({
       keyId, tenantId: req.user.tenantId, keyHash, keyHashPrefix,
-      name: name.trim(), description: description || '', isActive: true, createdBy: req.user._id.toString(),
+      name: name.trim(), description: description || '', isActive: true, createdBy: (req.user.userId || (req.user.userId || req.user._id))?.toString(),
     });
     res.status(201).json({
       success: true,
@@ -225,7 +225,7 @@ router.delete('/api-keys/:id', ...companyAdmin, async (req, res) => {
   try {
     const key = await ApiKey.findOneAndUpdate(
       { _id: req.params.id, tenantId: req.user.tenantId },
-      { isActive: false, revokedAt: new Date(), revokedBy: req.user._id.toString() },
+      { isActive: false, revokedAt: new Date(), revokedBy: (req.user.userId || (req.user.userId || req.user._id))?.toString() },
       { new: true }
     );
     if (!key) return res.status(404).json({ success: false, error: { message: 'API key not found' } });

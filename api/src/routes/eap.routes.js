@@ -14,7 +14,7 @@ const eapProvider = [requireAuth, requireRole(['EAP_PROVIDER'])];
 // GET /eap/dashboard
 router.get('/dashboard', ...eapProvider, async (req, res) => {
   try {
-    const providerId = req.user._id.toString();
+    const providerId = (req.user.userId || (req.user.userId || req.user._id))?.toString();
     const { tenantId } = req.user;
 
     const [totalClients, upcomingConsultations, completedSessions] = await Promise.all([

@@ -29,7 +29,7 @@ router.get('/', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'CLINICIA
   try {
     const { page = 1, limit = 20, search, status } = req.query;
     const tenantId = req.user.tenantId;
-    const userId = req.user._id;
+    const userId = (req.user.userId || req.user._id);
     const userRole = req.user.role;
     const requestId = req.requestId;
 
@@ -94,7 +94,7 @@ router.get('/', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'CLINICIA
 router.post('/', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN']), async (req, res) => {
   try {
     const { email, firstName, lastName, department } = req.body;
-    const userId = req.user._id;
+    const userId = (req.user.userId || req.user._id);
     const userRole = req.user.role;
     const tenantId = req.user.tenantId;
     const requestId = req.requestId;
@@ -175,7 +175,7 @@ router.get('/:id', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'CLINI
   try {
     const { id } = req.params;
     const tenantId = req.user.tenantId;
-    const userId = req.user._id;
+    const userId = (req.user.userId || req.user._id);
     const userRole = req.user.role;
     const requestId = req.requestId;
 
@@ -229,7 +229,7 @@ router.put('/:id', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN']), asyn
   try {
     const { id } = req.params;
     const { firstName, lastName, department, email } = req.body;
-    const userId = req.user._id;
+    const userId = (req.user.userId || req.user._id);
     const userRole = req.user.role;
     const tenantId = req.user.tenantId;
     const requestId = req.requestId;
@@ -292,7 +292,7 @@ router.delete('/:id', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN']), a
   try {
     const { id } = req.params;
     const { reason } = req.body;
-    const userId = req.user._id;
+    const userId = (req.user.userId || req.user._id);
     const userRole = req.user.role;
     const tenantId = req.user.tenantId;
     const requestId = req.requestId;
@@ -338,7 +338,7 @@ router.get('/:id/sessions', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN
     const { id } = req.params;
     const { page = 1, limit = 20 } = req.query;
     const tenantId = req.user.tenantId;
-    const userId = req.user._id;
+    const userId = (req.user.userId || req.user._id);
     const userRole = req.user.role;
     const requestId = req.requestId;
 
@@ -396,7 +396,7 @@ router.post('/bulk-import', requireAuth, requireRole(['COMPANY_ADMIN']), upload.
     }
 
     const tenantId = req.user.tenantId;
-    const userId = req.user._id;
+    const userId = (req.user.userId || req.user._id);
     const userRole = req.user.role;
     const requestId = req.requestId;
     const batchId = crypto.randomUUID();
@@ -569,7 +569,7 @@ router.post('/:id/invite', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN'
     const { id } = req.params;
     const { scheduledAt } = req.body;
     const tenantId = req.user.tenantId;
-    const userId = req.user._id;
+    const userId = (req.user.userId || req.user._id);
     const requestId = req.requestId;
 
     const employee = await User.findById(id);
@@ -617,7 +617,7 @@ router.post('/:id/schedule', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMI
     const { id } = req.params;
     const { frequency, nextAssessmentDate } = req.body;
     const tenantId = req.user.tenantId;
-    const userId = req.user._id;
+    const userId = (req.user.userId || req.user._id);
     const requestId = req.requestId;
 
     const employee = await User.findById(id);

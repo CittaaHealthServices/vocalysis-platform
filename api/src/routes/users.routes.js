@@ -13,7 +13,7 @@ const logger = require('../utils/logger');
 // ============================================================================
 router.get('/me', requireAuth, async (req, res) => {
   try {
-    const user = await User.findById(req.user._id)
+    const user = await User.findOne({ userId: req.user.userId || req.user._id })
       .select('-passwordHash -salt -mfaSecret')
       .lean();
     res.json({ success: true, data: user });
@@ -32,7 +32,7 @@ router.patch('/me', requireAuth, async (req, res) => {
     allowed.forEach(k => { if (req.body[k] !== undefined) updates[k] = req.body[k]; });
 
     const user = await User.findByIdAndUpdate(
-      req.user._id,
+      (req.user.userId || req.user._id),
       { $set: updates },
       { new: true }
     ).select('-passwordHash -salt -mfaSecret').lean();
@@ -117,7 +117,7 @@ router.post('/', requireAuth, requireRole(['CITTAA_SUPER_ADMIN', 'COMPANY_ADMIN'
       phone: phone || '',
       consentRecord: { consentGiven: false, dataProcessingConsent: false },
       notificationPreferences: { emailAlerts: true, inAppAlerts: true },
-      createdBy: req.user._id,
+      createdBy: (req.user.userId || req.user._id),
     });
     await newUser.save();
 

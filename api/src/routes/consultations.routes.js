@@ -19,7 +19,7 @@ const { zonedTimeToUtc, utcToZonedTime } = require('date-fns-tz');
 router.get('/', requireAuth, async (req, res) => {
   try {
     const { page = 1, limit = 20, status, employeeId } = req.query;
-    const userId = req.user._id;
+    const userId = (req.user.userId || req.user._id);
     const userRole = req.user.role;
     const tenantId = req.user.tenantId;
     const requestId = req.requestId;
@@ -98,7 +98,7 @@ router.post('/', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'SENIOR_
       location,
       notes
     } = req.body;
-    const userId = req.user._id;
+    const userId = (req.user.userId || req.user._id);
     const userRole = req.user.role;
     const tenantId = req.user.tenantId;
     const requestId = req.requestId;
@@ -236,7 +236,7 @@ router.post('/', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'SENIOR_
 router.get('/:id', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user._id;
+    const userId = (req.user.userId || req.user._id);
     const userRole = req.user.role;
     const tenantId = req.user.tenantId;
     const requestId = req.requestId;
@@ -290,7 +290,7 @@ router.put('/:id', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'SENIO
   try {
     const { id } = req.params;
     const { scheduledAt, notes, status, durationMinutes } = req.body;
-    const userId = req.user._id;
+    const userId = (req.user.userId || req.user._id);
     const userRole = req.user.role;
     const tenantId = req.user.tenantId;
     const requestId = req.requestId;
@@ -380,7 +380,7 @@ router.delete('/:id', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'SE
   try {
     const { id } = req.params;
     const { reason } = req.body;
-    const userId = req.user._id;
+    const userId = (req.user.userId || req.user._id);
     const userRole = req.user.role;
     const tenantId = req.user.tenantId;
     const requestId = req.requestId;
@@ -445,7 +445,7 @@ router.post('/:id/complete', requireAuth, requireRole(['SENIOR_CLINICIAN', 'CLIN
   try {
     const { id } = req.params;
     const { clinicianNotes } = req.body;
-    const userId = req.user._id;
+    const userId = (req.user.userId || req.user._id);
     const userRole = req.user.role;
     const tenantId = req.user.tenantId;
     const requestId = req.requestId;
@@ -501,7 +501,7 @@ router.get('/availability/:clinicianId', requireAuth, async (req, res) => {
   try {
     const { clinicianId } = req.params;
     const { date, duration } = req.query;
-    const userId = req.user._id;
+    const userId = (req.user.userId || req.user._id);
     const tenantId = req.user.tenantId;
     const requestId = req.requestId;
 
@@ -560,7 +560,7 @@ router.get('/availability/:clinicianId', requireAuth, async (req, res) => {
  */
 router.post('/instant-meet', requireAuth, async (req, res) => {
   try {
-    const meet = await googleService.createMeetSpace(`instant-${req.user._id}-${Date.now()}`);
+    const meet = await googleService.createMeetSpace(`instant-${(req.user.userId || req.user._id)}-${Date.now()}`);
     res.json({ meetLink: meet.meetLink, meetId: meet.meetId });
   } catch (err) {
     logger.error('Failed to create instant Meet', { error: err.message });
@@ -623,7 +623,7 @@ router.post('/:id/meet-link', requireAuth, async (req, res) => {
 router.post('/request', requireAuth, async (req, res) => {
   try {
     const { reason, preferredDate, preferredTime, type = 'online' } = req.body;
-    const employeeId = req.user._id.toString();
+    const employeeId = (req.user.userId || (req.user.userId || req.user._id))?.toString();
     const { tenantId } = req.user;
 
     if (!reason) {

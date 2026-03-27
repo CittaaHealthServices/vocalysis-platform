@@ -17,7 +17,7 @@ const clinician = [requireAuth, requireRole(['SENIOR_CLINICIAN', 'CLINICAL_PSYCH
 // ============================================================================
 router.get('/stats', ...clinician, async (req, res) => {
   try {
-    const clinicianId = req.user._id.toString();
+    const clinicianId = (req.user.userId || (req.user.userId || req.user._id))?.toString();
     const { tenantId } = req.user;
 
     const [activePatients, sessionCount, pendingAlerts, upcomingConsultations] = await Promise.all([
@@ -57,7 +57,7 @@ router.get('/stats', ...clinician, async (req, res) => {
 // ============================================================================
 router.get('/schedule/today', ...clinician, async (req, res) => {
   try {
-    const clinicianId = req.user._id.toString();
+    const clinicianId = (req.user.userId || (req.user.userId || req.user._id))?.toString();
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
@@ -178,7 +178,7 @@ router.get('/patients/:id', ...clinician, async (req, res) => {
     // Load consultations
     const consultations = await Consultation.find({
       employeeId: req.params.id,
-      clinicianId: req.user._id.toString(),
+      clinicianId: (req.user.userId || (req.user.userId || req.user._id))?.toString(),
     })
       .sort({ scheduledAt: -1 })
       .lean();
@@ -277,7 +277,7 @@ router.post('/sessions/:sessionId/post-form', requireAuth, async (req, res) => {
       submittedAt: new Date(),
     };
     session.status = 'completed';
-    session.reviewedBy = req.user._id.toString();
+    session.reviewedBy = (req.user.userId || (req.user.userId || req.user._id))?.toString();
     await session.save();
 
     res.json({ success: true, message: 'Post-session form saved', data: session.postSessionForm });

@@ -195,7 +195,7 @@ router.post('/api-keys', ...superAdmin, async (req, res) => {
       name: name.trim(),
       description: description || '',
       isActive: true,
-      createdBy: req.user._id.toString(),
+      createdBy: (req.user.userId || (req.user.userId || req.user._id))?.toString(),
     });
 
     res.status(201).json({
@@ -220,7 +220,7 @@ router.delete('/api-keys/:id', ...superAdmin, async (req, res) => {
   try {
     const key = await ApiKey.findByIdAndUpdate(
       req.params.id,
-      { isActive: false, revokedAt: new Date(), revokedBy: req.user._id.toString() },
+      { isActive: false, revokedAt: new Date(), revokedBy: (req.user.userId || (req.user.userId || req.user._id))?.toString() },
       { new: true }
     );
     if (!key) return res.status(404).json({ success: false, error: { message: 'API key not found' } });

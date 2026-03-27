@@ -16,7 +16,7 @@ const emailService = require('../services/emailService');
 router.get('/', requireAuth, requireRole(['CITTAA_SUPER_ADMIN']), async (req, res) => {
   try {
     const { page = 1, limit = 20, status } = req.query;
-    const userId = req.user._id;
+    const userId = (req.user.userId || req.user._id);
     const requestId = req.requestId;
 
     let query = {};
@@ -81,7 +81,7 @@ router.post('/', requireAuth, requireRole(['CITTAA_SUPER_ADMIN']), async (req, r
       website,
       googleConfig
     } = req.body;
-    const userId = req.user._id;
+    const userId = (req.user.userId || req.user._id);
     const requestId = req.requestId;
 
     // Validate required fields
@@ -201,7 +201,7 @@ router.post('/', requireAuth, requireRole(['CITTAA_SUPER_ADMIN']), async (req, r
 router.get('/:id', requireAuth, requireRole(['CITTAA_SUPER_ADMIN']), async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user._id;
+    const userId = (req.user.userId || req.user._id);
     const requestId = req.requestId;
 
     const tenant = await Tenant.findById(id);
@@ -253,7 +253,7 @@ router.put('/:id', requireAuth, requireRole(['CITTAA_SUPER_ADMIN']), async (req,
   try {
     const { id } = req.params;
     const { name, monthlyAssessmentQuota, googleConfig, status } = req.body;
-    const userId = req.user._id;
+    const userId = (req.user.userId || req.user._id);
     const requestId = req.requestId;
 
     const tenant = await Tenant.findById(id);
@@ -321,7 +321,7 @@ router.post('/:id/suspend', requireAuth, requireRole(['CITTAA_SUPER_ADMIN']), as
   try {
     const { id } = req.params;
     const { reason } = req.body;
-    const userId = req.user._id;
+    const userId = (req.user.userId || req.user._id);
     const requestId = req.requestId;
 
     const tenant = await Tenant.findByIdAndUpdate(
@@ -365,7 +365,7 @@ router.post('/:id/suspend', requireAuth, requireRole(['CITTAA_SUPER_ADMIN']), as
 router.post('/:id/activate', requireAuth, requireRole(['CITTAA_SUPER_ADMIN']), async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user._id;
+    const userId = (req.user.userId || req.user._id);
     const requestId = req.requestId;
 
     const tenant = await Tenant.findByIdAndUpdate(
@@ -409,7 +409,7 @@ router.delete('/:id', requireAuth, requireRole(['CITTAA_SUPER_ADMIN']), async (r
   try {
     const { id } = req.params;
     const { reason } = req.body;
-    const userId = req.user._id;
+    const userId = (req.user.userId || req.user._id);
     const requestId = req.requestId;
 
     const tenant = await Tenant.findByIdAndUpdate(
@@ -453,7 +453,7 @@ router.delete('/:id', requireAuth, requireRole(['CITTAA_SUPER_ADMIN']), async (r
 router.post('/:id/impersonate', requireAuth, requireRole(['CITTAA_SUPER_ADMIN']), async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user._id;
+    const userId = (req.user.userId || req.user._id);
     const requestId = req.requestId;
 
     const tenant = await Tenant.findById(id);
