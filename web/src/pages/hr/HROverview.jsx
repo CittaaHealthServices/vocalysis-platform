@@ -5,7 +5,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import api from '../../services/api'
 
 export const HROverview = () => {
-  const { data: overview, isLoading } = useApi(['hr', 'overview'], () => api.get('/analytics/overview'))
+  const { data: overview, isLoading } = useApi(['hr', 'overview'], () => api.get('/analytics/overview').then(r => r.data))
 
   if (isLoading) return <LoadingScreen />
 
