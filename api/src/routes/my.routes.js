@@ -1,5 +1,5 @@
 /**
- * /my/* routes — Employee self-service endpoints
+ * /my/* routes â Employee self-service endpoints
  * All routes require authentication as EMPLOYEE (or any authenticated user accessing their own data)
  */
 const express = require('express');
@@ -27,7 +27,7 @@ router.get('/wellness', requireAuth, async (req, res) => {
     // Upcoming consultations
     const upcomingConsultations = await Consultation.find({
       employeeId: userId,
-      status: { $in: ['SCHEDULED', 'CONFIRMED'] },
+      status: { $in: ['scheduled', 'confirmed'] },
       scheduledAt: { $gte: new Date() },
     })
       .sort({ scheduledAt: 1 })
@@ -54,6 +54,8 @@ router.get('/wellness', requireAuth, async (req, res) => {
     res.json({
       success: true,
       data: {
+        firstName: req.user.firstName || '',
+        lastName: req.user.lastName || '',
         wellnessScore: latestScore,
         streak,
         recentSessions: recentSessions.map(s => ({
