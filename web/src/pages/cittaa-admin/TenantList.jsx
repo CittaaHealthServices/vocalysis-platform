@@ -10,11 +10,31 @@ export const TenantList = () => {
   const { data: tenants, isLoading } = useApi(['tenants', filters], () => api.get('/tenants', { params: filters }))
 
   const columns = [
-    { key: 'companyName', label: 'Company Name' },
+    {
+      key: 'displayName',
+      label: 'Company Name',
+      render: (row) => <span className="font-medium">{row.displayName || row.name || '—'}</span>,
+    },
     { key: 'industry', label: 'Industry' },
     { key: 'employeeCount', label: 'Employees' },
-    { key: 'tier', label: 'Tier', render: (row) => <span className="font-medium">{row.tier}</span> },
-    { key: 'status', label: 'Status', render: (row) => <span className="text-green-600">Active</span> },
+    {
+      key: 'contractTier',
+      label: 'Tier',
+      render: (row) => (
+        <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-violet-100 text-violet-700 capitalize">
+          {row.contractTier || '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      render: (row) => (
+        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${row.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+          {row.status || 'active'}
+        </span>
+      ),
+    },
   ]
 
   if (isLoading) return <LoadingScreen />
@@ -39,7 +59,7 @@ export const TenantList = () => {
             options={[
               { value: '', label: 'All Tiers' },
               { value: 'starter', label: 'Starter' },
-              { value: 'pro', label: 'Pro' },
+              { value: 'professional', label: 'Professional' },
               { value: 'enterprise', label: 'Enterprise' },
             ]}
             value={filters.tier}
@@ -59,8 +79,8 @@ export const TenantList = () => {
 
       <Table
         columns={columns}
-        data={tenants?.data || []}
-        onRowClick={(row) => navigate(`/cittaa-admin/tenants/${row.id}`)}
+        data={tenants?.tenants || tenants?.data || []}
+        onRowClick={(row) => navigate(`/cittaa-admin/tenants/${row._id || row.id}`)}
         loading={isLoading}
       />
     </div>

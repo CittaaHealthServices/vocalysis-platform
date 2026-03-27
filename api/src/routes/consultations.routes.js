@@ -29,7 +29,7 @@ router.get('/', requireAuth, async (req, res) => {
     // Filter by role
     if (userRole === 'EMPLOYEE') {
       query.employeeId = userId;
-    } else if (userRole === 'CLINICIAN') {
+    } else if (userRole === 'SENIOR_CLINICIAN' || userRole === 'CLINICAL_PSYCHOLOGIST') {
       query.clinicianId = userId;
     }
 
@@ -85,7 +85,7 @@ router.get('/', requireAuth, async (req, res) => {
  * POST /consultations
  * Create consultation with optional Google Calendar integration
  */
-router.post('/', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'CLINICIAN']), async (req, res) => {
+router.post('/', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'SENIOR_CLINICIAN', 'CLINICAL_PSYCHOLOGIST']), async (req, res) => {
   try {
     const {
       sessionId,
@@ -259,7 +259,7 @@ router.get('/:id', requireAuth, async (req, res) => {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
-    if (userRole === 'CLINICIAN' && consultation.clinicianId._id.toString() !== userId.toString()) {
+    if (userRole === 'SENIOR_CLINICIAN' || userRole === 'CLINICAL_PSYCHOLOGIST' && consultation.clinicianId._id.toString() !== userId.toString()) {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
@@ -286,7 +286,7 @@ router.get('/:id', requireAuth, async (req, res) => {
  * PUT /consultations/:id
  * Update consultation (reschedule, notes, status)
  */
-router.put('/:id', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'CLINICIAN']), async (req, res) => {
+router.put('/:id', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'SENIOR_CLINICIAN', 'CLINICAL_PSYCHOLOGIST']), async (req, res) => {
   try {
     const { id } = req.params;
     const { scheduledAt, notes, status, durationMinutes } = req.body;
@@ -376,7 +376,7 @@ router.put('/:id', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'CLINI
  * DELETE /consultations/:id
  * Cancel consultation
  */
-router.delete('/:id', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'CLINICIAN']), async (req, res) => {
+router.delete('/:id', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'SENIOR_CLINICIAN', 'CLINICAL_PSYCHOLOGIST']), async (req, res) => {
   try {
     const { id } = req.params;
     const { reason } = req.body;
@@ -441,7 +441,7 @@ router.delete('/:id', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'CL
  * POST /consultations/:id/complete
  * Mark consultation as complete with notes
  */
-router.post('/:id/complete', requireAuth, requireRole(['CLINICIAN']), async (req, res) => {
+router.post('/:id/complete', requireAuth, requireRole(['SENIOR_CLINICIAN', 'CLINICAL_PSYCHOLOGIST']), async (req, res) => {
   try {
     const { id } = req.params;
     const { clinicianNotes } = req.body;

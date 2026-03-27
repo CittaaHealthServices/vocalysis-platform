@@ -161,4 +161,27 @@ router.post('/clinicians', requireAuth, requireRole(['COMPANY_ADMIN', 'CITTAA_SU
   }
 });
 
+// ============================================================================
+// PATCH /users/:id — admin update (deactivate / change role etc.)
+// ============================================================================
+router.patch('/:id', requireAuth, requireRole(['COMPANY_ADMIN', 'HR_ADMIN', 'CITTAA_SUPER_ADMIN']), async (req, res) => {
+  try {
+    const allowed = ['isActive', 'role', 'firstName', 'lastName', 'phone', 'clinicianProfile'];
+    const updates = {};
+    allowed.forEach(k => { if (req.body[k] !== undefined) updates[k] = req.body[k]; });
+
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { $set: updates },
+      { new: true }
+    ).select('-passwordHash -salt -mfaSecret').lean();
+
+    if (!user) return res.status(404).json({ success: false, error: { message: 'User not found' } });
+    res.json({ success: true, data: user });
+  } catch (err) {
+    logger.error('users/:id patch error', { error: err.message });
+    res.status(500).json({ success: false, error: { message: 'Failed to update user' } });
+  }
+});
+
 module.exports = router;

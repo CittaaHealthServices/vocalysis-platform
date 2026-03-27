@@ -103,6 +103,33 @@ app.use('/users', usersRoutes);
 app.use('/clinical', clinicalRoutes);
 app.use('/eap', eapRoutes);
 
+// ── Scheduling (HR view of upcoming assessments + consultations this week) ───
+const _schedRouter = express.Router();
+_schedRouter.get('/', require('./middleware/auth').requireAuth, async (req, res) => {
+  try {
+    const Consultation = require('./models/Consultation');
+    const Session      = require('./models/Session');
+    const { tenantId } = req.user;
+    const now     = new Date();
+    const weekEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    const [upcoming, recentSessions] = await Promise.all([
+      Consultation.find({ tenantId, scheduledAt: { $gte: now, $lte: weekEnd }, status: { $in: ['CONFIRMED', 'PENDING'] } })
+        .populate('employeeId', 'firstName lastName email')
+        .populate('clinicianId', 'firstName lastName')
+        .sort({ scheduledAt: 1 }).limit(20).lean(),
+      Session.find({ tenantId, createdAt: { $gte: new Date(now - 7 * 24 * 60 * 60 * 1000) } })
+        .populate('patientId', 'firstName lastName email')
+        .sort({ createdAt: -1 }).limit(20).lean(),
+    ]);
+
+    res.json({ success: true, data: { upcoming, recentSessions } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: 'Failed to load scheduling data' });
+  }
+});
+app.use('/scheduling', _schedRouter);
+
 // ============================================================================
 // DOCUMENTATION & ADMIN ROUTES
 // ============================================================================

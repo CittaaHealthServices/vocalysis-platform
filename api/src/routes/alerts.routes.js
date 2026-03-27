@@ -52,6 +52,58 @@ router.get('/', requireAuth, async (req, res) => {
 });
 
 /**
+ * GET /alerts/stats  ← must be BEFORE /:id so it isn't shadowed
+ * Get alert statistics
+ */
+router.get('/stats', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'SENIOR_CLINICIAN', 'CLINICAL_PSYCHOLOGIST']), async (req, res) => {
+  try {
+    const tenantId = req.user.tenantId;
+    const userId = req.user._id;
+    const requestId = req.requestId;
+    const stats = await alertEngine.getAlertStats(tenantId);
+    await auditService.log({ userId, tenantId, role: req.user.role, action: 'ALERT_STATS_VIEWED', targetResource: 'Alert', ipAddress: req.ip, userAgent: req.get('user-agent'), requestId });
+    res.json({ stats });
+  } catch (err) {
+    logger.error('Failed to get alert statistics', { error: err.message });
+    res.status(500).json({ error: 'Failed to get statistics' });
+  }
+});
+
+/**
+ * PATCH /alerts/:id
+ * Generic status update — frontend sends { status: 'acknowledged'|'escalated'|'resolved' }
+ */
+router.patch('/:id', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'SENIOR_CLINICIAN', 'CLINICAL_PSYCHOLOGIST']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, note } = req.body;
+    const userId = req.user._id;
+    const tenantId = req.user.tenantId;
+
+    const alert = await Alert.findOne({ _id: id, tenantId });
+    if (!alert) return res.status(404).json({ error: 'Alert not found' });
+
+    const now = new Date();
+    if (status === 'acknowledged') {
+      alert.status = 'acknowledged'; alert.acknowledgedAt = now; alert.acknowledgedBy = userId;
+      if (note) alert.acknowledgeNote = note;
+    } else if (status === 'escalated') {
+      alert.status = 'escalated'; alert.escalatedAt = now;
+    } else if (status === 'resolved') {
+      alert.status = 'resolved'; alert.resolvedAt = now; alert.resolvedBy = userId;
+      if (note) alert.resolutionNote = note;
+    } else {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+    await alert.save();
+    res.json({ alert });
+  } catch (err) {
+    logger.error('Failed to update alert', { error: err.message });
+    res.status(500).json({ error: 'Failed to update alert' });
+  }
+});
+
+/**
  * GET /alerts/:id
  * Get alert detail
  */
@@ -106,7 +158,7 @@ router.get('/:id', requireAuth, async (req, res) => {
  * PUT /alerts/:id/acknowledge
  * Acknowledge alert
  */
-router.put('/:id/acknowledge', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'CLINICIAN']), async (req, res) => {
+router.put('/:id/acknowledge', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'SENIOR_CLINICIAN', 'CLINICAL_PSYCHOLOGIST']), async (req, res) => {
   try {
     const { id } = req.params;
     const { note } = req.body;
@@ -206,7 +258,7 @@ router.put('/:id/escalate', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN
  * PUT /alerts/:id/resolve
  * Resolve alert
  */
-router.put('/:id/resolve', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'CLINICIAN']), async (req, res) => {
+router.put('/:id/resolve', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'SENIOR_CLINICIAN', 'CLINICAL_PSYCHOLOGIST']), async (req, res) => {
   try {
     const { id } = req.params;
     const { resolutionSummary } = req.body;
@@ -248,36 +300,6 @@ router.put('/:id/resolve', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN'
   } catch (err) {
     logger.error('Failed to resolve alert', { error: err.message });
     res.status(500).json({ error: 'Failed to resolve alert' });
-  }
-});
-
-/**
- * GET /alerts/stats
- * Get alert statistics
- */
-router.get('/stats', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN']), async (req, res) => {
-  try {
-    const tenantId = req.user.tenantId;
-    const userId = req.user._id;
-    const requestId = req.requestId;
-
-    const stats = await alertEngine.getAlertStats(tenantId);
-
-    await auditService.log({
-      userId,
-      tenantId,
-      role: req.user.role,
-      action: 'ALERT_STATS_VIEWED',
-      targetResource: 'Alert',
-      ipAddress: req.ip,
-      userAgent: req.get('user-agent'),
-      requestId
-    });
-
-    res.json({ stats });
-  } catch (err) {
-    logger.error('Failed to get alert statistics', { error: err.message });
-    res.status(500).json({ error: 'Failed to get statistics' });
   }
 });
 
