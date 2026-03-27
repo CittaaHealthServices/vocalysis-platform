@@ -14,6 +14,10 @@ from extractor import FeatureExtractor
 from fallback_scorer import DeterministicScorer
 from ml_scorer import get_scorer
 from elevenlabs_trainer import start_retrain, get_retrain_status
+from auto_retrain import (
+    start_scheduler, stop_scheduler, get_history,
+    get_scheduler_info, trigger_now,
+)
 
 
 # Configure logging - no audio content or feature values logged
@@ -77,6 +81,7 @@ def create_app():
             'ml_model_loaded': ml_scorer.is_loaded,
             'ml_model_version': ml_scorer._meta.get('version', 'not loaded'),
             'calibration': 'Indian voices — Hindi/Telugu/Tamil/Kannada/IndEng',
+            'auto_retrain': get_scheduler_info(),
         }), 200
 
     @app.route('/score', methods=['POST'])
@@ -183,9 +188,17 @@ def create_app():
 
         Uses ELEVENLABS_API_KEY from environment (set in Railway).
         Generates Indian voice samples → extracts features → fine-tunes model → hot-swaps scorer.
+        Run is logged to /retrain/history.
 
         Returns immediately with job status. Poll /retrain/status for progress.
         """
+        from elevenlabs_trainer import _retrain_status as _rs
+        if _rs.get('state') == 'running':
+            return jsonify({'success': False, 'error': {
+                'code': 'ALREADY_RUNNING',
+                'message': 'Retrain already in progress'
+            }}), 409
+
         api_key = os.environ.get('ELEVENLABS_API_KEY')
         if not api_key:
             return jsonify({'success': False, 'error': {
@@ -193,18 +206,37 @@ def create_app():
                 'message': 'ELEVENLABS_API_KEY not set in environment'
             }}), 400
 
-        started, message = start_retrain(api_key)
+        started, message = trigger_now(trigger='manual')
         if not started:
             return jsonify({'success': False, 'error': {
-                'code': 'ALREADY_RUNNING',
+                'code': 'TRIGGER_FAILED',
                 'message': message
-            }}), 409
+            }}), 500
 
         return jsonify({
             'success': True,
-            'message': message,
-            'note': 'Poll /retrain/status for progress. Takes ~10-15 minutes on first run.',
+            'message': 'Retrain started (manual trigger)',
+            'note': 'Poll /retrain/status for progress. Poll /retrain/history for run log.',
         }), 202
+
+    @app.route('/retrain/history', methods=['GET'])
+    @require_internal_auth
+    def retrain_history():
+        """
+        Return retraining history (newest first).
+        Shows accuracy improvements across all auto and manual runs.
+        Optional query param: ?limit=N (default 20)
+        """
+        limit = min(int(request.args.get('limit', 20)), 100)
+        history = get_history(limit=limit)
+        best = max((r.get('test_accuracy', 0) for r in history if r.get('status') == 'complete'), default=0)
+        return jsonify({
+            'success': True,
+            'history': history,
+            'total_runs': len(history),
+            'best_accuracy': round(best, 4),
+            'scheduler': get_scheduler_info(),
+        }), 200
 
     @app.route('/retrain/status', methods=['GET'])
     @require_internal_auth
@@ -444,6 +476,17 @@ def create_app():
                     'message': 'Internal server error during fallback extraction'
                 }
             }), 500
+
+    # ========== AUTO-RETRAIN SCHEDULER ==========
+
+    # Start background APScheduler so the model keeps improving itself.
+    # Interval is controlled by RETRAIN_INTERVAL_DAYS env var (default 7 days).
+    # Set AUTO_RETRAIN_ENABLED=false to disable.
+    start_scheduler()
+
+    # Stop the scheduler cleanly when the app shuts down
+    import atexit
+    atexit.register(stop_scheduler)
 
     # ========== ERROR HANDLERS ==========
 
