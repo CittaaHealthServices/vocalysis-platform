@@ -121,30 +121,40 @@ export default function TrialManagement() {
   }, [])
 
   /* Load trial status when tenant selected */
-  const loadTrialStatus = useCallback(async (tenantId) => {
-    if (!tenantId) return
+  const loadTrialStatus = useCallback(async (tenantMongoId, displayName) => {
+    if (!tenantMongoId) return
     try {
-      // Use admin endpoint — fetch tenant detail
-      const res = await api.get(`/tenants/${tenantId}`)
-      const tenant = res?.data?.tenant || res?.data
+      // GET /tenants/:id — backend returns { tenant, stats }
+      const res = await api.get(`/tenants/${tenantMongoId}`)
+      // Interceptor unwraps response.data, so res is { tenant: {...}, stats: {...} }
+      const tenant = res?.tenant || res?.data?.tenant || res
       if (tenant?.trial) {
         const now = new Date()
         const expired = tenant.trial.endDate && new Date(tenant.trial.endDate) < now
         const daysLeft = expired ? 0 : Math.ceil((new Date(tenant.trial.endDate) - now) / 86400000)
-        setTrialStatus({ ...tenant.trial, expired, daysLeft, displayName: tenant.displayName })
+        setTrialStatus({ ...tenant.trial, expired, daysLeft, displayName: tenant.displayName || displayName })
       } else {
-        setTrialStatus({ isActive: false, displayName: tenant?.displayName })
+        setTrialStatus({ isActive: false, displayName: tenant?.displayName || displayName })
       }
     } catch {
-      setTrialStatus(null)
+      setTrialStatus({ isActive: false, displayName })
     }
   }, [])
 
   const handleSelectTenant = (e) => {
-    const id = e.target.value
-    setSelected(id || null)
+    const mongoId = e.target.value
+    setSelected(mongoId || null)
     setTrialStatus(null)
-    if (id) loadTrialStatus(id)
+    if (mongoId) {
+      const t = tenants.find(t => (t._id || t.id) === mongoId)
+      loadTrialStatus(mongoId, t?.displayName)
+    }
+  }
+
+  /* Helper: get string tenantId from selected MongoDB _id */
+  const getStringTenantId = () => {
+    const t = tenants.find(t => (t._id || t.id) === selected)
+    return t?.tenantId || selected
   }
 
   /* Actions */
@@ -154,15 +164,16 @@ export default function TrialManagement() {
     try {
       const emails = startForm.invitedEmails.split(/[\n,]+/).map(e => e.trim()).filter(Boolean)
       await api.post('/trial/start', {
-        tenantId: selected,
+        tenantId: getStringTenantId(),
         durationDays: Number(startForm.durationDays),
         maxUsers: Number(startForm.maxUsers),
         invitedEmails: emails,
       })
       flash('success', 'Trial started successfully! Invitation emails sent.')
-      loadTrialStatus(selected)
+      const t = tenants.find(t => (t._id || t.id) === selected)
+      loadTrialStatus(selected, t?.displayName)
     } catch (err) {
-      flash('error', err?.message || 'Failed to start trial')
+      flash('error', err?.response?.data?.message || err?.message || 'Failed to start trial')
     } finally {
       setLoading(false)
     }
@@ -173,12 +184,13 @@ export default function TrialManagement() {
     setLoading(true)
     try {
       const emails = inviteEmails.split(/[\n,]+/).map(e => e.trim()).filter(Boolean)
-      const res = await api.post('/trial/invite', { tenantId: selected, emails })
-      flash('success', res?.data?.message || `${emails.length} user(s) invited`)
+      const res = await api.post('/trial/invite', { tenantId: getStringTenantId(), emails })
+      flash('success', res?.message || `${emails.length} user(s) invited`)
       setInviteEmails('')
-      loadTrialStatus(selected)
+      const t = tenants.find(t => (t._id || t.id) === selected)
+      loadTrialStatus(selected, t?.displayName)
     } catch (err) {
-      flash('error', err?.message || 'Failed to invite users')
+      flash('error', err?.response?.data?.message || err?.message || 'Failed to invite users')
     } finally {
       setLoading(false)
     }
@@ -188,12 +200,13 @@ export default function TrialManagement() {
     if (!selected || !removeEmail.trim()) return
     setLoading(true)
     try {
-      await api.delete('/trial/invite', { data: { tenantId: selected, email: removeEmail.trim() } })
+      await api.delete('/trial/invite', { data: { tenantId: getStringTenantId(), email: removeEmail.trim() } })
       flash('success', `${removeEmail} removed from trial`)
       setRemoveEmail('')
-      loadTrialStatus(selected)
+      const t = tenants.find(t => (t._id || t.id) === selected)
+      loadTrialStatus(selected, t?.displayName)
     } catch (err) {
-      flash('error', err?.message || 'Failed to remove user')
+      flash('error', err?.response?.data?.message || err?.message || 'Failed to remove user')
     } finally {
       setLoading(false)
     }
@@ -203,11 +216,12 @@ export default function TrialManagement() {
     if (!selected) return
     setLoading(true)
     try {
-      const res = await api.post('/trial/extend', { tenantId: selected, extraDays: Number(extraDays) })
-      flash('success', res?.data?.message || `Trial extended by ${extraDays} days`)
-      loadTrialStatus(selected)
+      const res = await api.post('/trial/extend', { tenantId: getStringTenantId(), extraDays: Number(extraDays) })
+      flash('success', res?.message || `Trial extended by ${extraDays} days`)
+      const t = tenants.find(t => (t._id || t.id) === selected)
+      loadTrialStatus(selected, t?.displayName)
     } catch (err) {
-      flash('error', err?.message || 'Failed to extend trial')
+      flash('error', err?.response?.data?.message || err?.message || 'Failed to extend trial')
     } finally {
       setLoading(false)
     }
@@ -217,11 +231,12 @@ export default function TrialManagement() {
     if (!selected) return
     setLoading(true)
     try {
-      await api.post('/trial/convert', { tenantId: selected, contractTier })
+      await api.post('/trial/convert', { tenantId: getStringTenantId(), contractTier })
       flash('success', `Trial converted to ${contractTier} plan!`)
-      loadTrialStatus(selected)
+      const t = tenants.find(t => (t._id || t.id) === selected)
+      loadTrialStatus(selected, t?.displayName)
     } catch (err) {
-      flash('error', err?.message || 'Failed to convert trial')
+      flash('error', err?.response?.data?.message || err?.message || 'Failed to convert trial')
     } finally {
       setLoading(false)
     }
@@ -280,8 +295,8 @@ export default function TrialManagement() {
           >
             <option value="">— choose a tenant —</option>
             {tenants.map(t => (
-              <option key={t.tenantId} value={t.tenantId}>
-                {t.displayName} ({t.tenantId})
+              <option key={t._id || t.id || t.tenantId} value={t._id || t.id}>
+                {t.displayName || t.legalName} ({t.tenantId})
               </option>
             ))}
           </select>

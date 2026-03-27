@@ -41,6 +41,42 @@ const FROM_EMAIL   = process.env.RESEND_FROM_EMAIL || 'info@cittaa.in';
 const BRAND_NAME   = 'Cittaa Health Services';
 const PLATFORM_URL = process.env.PLATFORM_URL || 'https://striking-bravery-production-c13e.up.railway.app';
 
+/* ── IST timezone helpers ─────────────────────────────────────────────────── */
+const IST = 'Asia/Kolkata';
+
+/** Format date as "15 Apr 2025" in IST */
+function toISTDate(date) {
+  return new Date(date).toLocaleDateString('en-IN', { timeZone: IST, day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+/** Format time as "10:30 AM" in IST */
+function toISTTime(date) {
+  return new Date(date).toLocaleTimeString('en-IN', { timeZone: IST, hour: '2-digit', minute: '2-digit', hour12: true });
+}
+
+/** Format full datetime as "15 Apr 2025, 10:30 AM IST" */
+function toIST(date) {
+  return new Date(date).toLocaleString('en-IN', {
+    timeZone: IST,
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: true,
+  }) + ' IST';
+}
+
+/** Returns current hour in IST (0–23) */
+function istHour() {
+  return parseInt(
+    new Date().toLocaleString('en-US', { timeZone: IST, hour: 'numeric', hour12: false }),
+    10,
+  );
+}
+
+/** Returns true if current IST time is within business hours (8 AM – 9 PM) */
+function isISTBusinessHours() {
+  const h = istHour();
+  return h >= 8 && h < 21;
+}
+
 /* ── Building blocks (all inline CSS for Gmail compatibility) ─────────────── */
 
 function mkHeader(title, subtitle, from, to2) {
@@ -173,7 +209,21 @@ function wrapHtml(rows) {
 }
 
 /* ── Core send ────────────────────────────────────────────────────────────── */
-async function sendEmail({ to, subject, html, text }) {
+/**
+ * @param {object} opts
+ * @param {string|string[]} opts.to
+ * @param {string} opts.subject
+ * @param {string} opts.html
+ * @param {string} [opts.text]
+ * @param {boolean} [opts.urgent=false] - If false, defers outside IST 8 AM–9 PM
+ */
+async function sendEmail({ to, subject, html, text, urgent = false }) {
+  // IST business-hours gate — non-urgent automated emails only 8 AM–9 PM IST
+  if (!urgent && !isISTBusinessHours()) {
+    logger.info('Email deferred — outside IST business hours (8 AM–9 PM IST)', { to, subject });
+    return { success: false, deferred: true };
+  }
+
   const resend = getResend();
   if (!resend) {
     logger.warn('Email skipped (no Resend key)', { to, subject });
@@ -239,7 +289,7 @@ async function sendWelcomeEmail({ to, name, loginUrl, tempPassword, companyName 
  * ════════════════════════════════════════════════════════════════════════════ */
 async function sendTrialInvite({ to, name, companyName, daysLeft, endDate, loginUrl }) {
   const subject = `${companyName} has gifted you a free wellbeing trial &#127873;`;
-  const endStr  = new Date(endDate).toLocaleDateString('en-IN', { dateStyle: 'long' });
+  const endStr  = toISTDate(endDate);
   const features = [
     { icon: '&#127897;', title: 'Voice Wellness Check-ins',    desc: 'Speak naturally for 30 sec&ndash;2 min. Our AI listens for wellbeing signals &mdash; no transcription, no judgement.' },
     { icon: '&#128202;', title: 'Personal Wellness Dashboard', desc: 'See your emotional trends over time and receive gentle, personalised suggestions.' },
@@ -294,7 +344,7 @@ async function sendTrialExpiryReminder({ to, name, companyName, daysLeft, endDat
   const subject = daysLeft <= 1
     ? `Your Cittaa trial ends today &mdash; last chance to check in &#128336;`
     : `${daysLeft} days left in your Cittaa trial &mdash; ${companyName}`;
-  const endStr   = new Date(endDate).toLocaleDateString('en-IN', { dateStyle: 'long' });
+  const endStr   = toISTDate(endDate);
   const isUrgent = daysLeft <= 2;
   const hFrom    = isUrgent ? B.warm   : B.primary;
   const hTo      = isUrgent ? B.warmDk : B.primaryDk;
@@ -338,9 +388,7 @@ async function sendTrialExpiryReminder({ to, name, companyName, daysLeft, endDat
  * ════════════════════════════════════════════════════════════════════════════ */
 async function sendAssessmentInvite({ employee, clinicianName, assessmentUrl, scheduledAt }) {
   const subject = `A wellness check-in has been arranged for you`;
-  const scheduledDate = new Date(scheduledAt).toLocaleString('en-IN', {
-    dateStyle: 'long', timeStyle: 'short', timeZone: 'Asia/Kolkata',
-  });
+  const scheduledDate = toIST(scheduledAt);
   const html = wrapHtml(`
     ${mkHeader('A wellness check-in, just for you', `Arranged by ${clinicianName}`)}
     <tr><td style="padding:40px 48px 0;">
@@ -425,9 +473,7 @@ async function sendAlertNotification({ to, alert, employee, tenantName }) {
  * ════════════════════════════════════════════════════════════════════════════ */
 async function sendConsultationInvite({ to, consultation, meetLink, calendarLink }) {
   const subject = `Your wellness consultation is confirmed &#10024;`;
-  const when    = new Date(consultation.scheduledAt).toLocaleString('en-IN', {
-    dateStyle: 'full', timeStyle: 'short', timeZone: 'Asia/Kolkata',
-  });
+  const when    = toIST(consultation.scheduledAt);
   const html = wrapHtml(`
     ${mkHeader('Your consultation is confirmed &#10024;', 'A space set aside just for you')}
     <tr><td style="padding:40px 48px 0;">
@@ -485,7 +531,7 @@ async function sendPasswordReset({ to, name, resetUrl, expiresIn }) {
  * ════════════════════════════════════════════════════════════════════════════ */
 async function sendWeeklyHRReport({ to, hrAdmin, reportData, tenantName }) {
   const subject  = `Weekly wellbeing pulse &mdash; ${tenantName}`;
-  const dateStr  = new Date().toLocaleDateString('en-IN', { dateStyle: 'long' });
+  const dateStr  = toISTDate(new Date());
   const tagBgs   = { critical:'#fde8e7', high:'#fef3e2', medium:'#fef9c3', low:'#e6f4f1' };
   const tagColor = { critical:'#9b2c2c', high:'#92400e', medium:'#713f12', low:'#1a5c4d' };
 
@@ -540,9 +586,7 @@ async function sendWeeklyHRReport({ to, hrAdmin, reportData, tenantName }) {
  * ════════════════════════════════════════════════════════════════════════════ */
 async function sendConsultationReminder({ to, consultation, minutesBefore }) {
   const subject = `Your session starts in ${minutesBefore} minutes &#128336;`;
-  const time    = new Date(consultation.scheduledAt).toLocaleTimeString('en-IN', {
-    timeStyle: 'short', timeZone: 'Asia/Kolkata',
-  });
+  const time    = toISTTime(consultation.scheduledAt);
   const html = wrapHtml(`
     ${mkHeader(`Starting in ${minutesBefore} min`, `${time} IST`)}
     <tr><td style="padding:40px 48px 0;text-align:center;">

@@ -35,10 +35,15 @@ function alertToNotif(alert, index) {
   let time = ''
   if (createdAt) {
     const diff = Math.floor((Date.now() - createdAt.getTime()) / 1000)
-    if (diff < 60)        time = `${diff}s ago`
-    else if (diff < 3600) time = `${Math.floor(diff / 60)} min ago`
+    if (diff < 60)         time = `${diff}s ago`
+    else if (diff < 3600)  time = `${Math.floor(diff / 60)} min ago`
     else if (diff < 86400) time = `${Math.floor(diff / 3600)} hr ago`
-    else                  time = createdAt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+    else {
+      // Show date in IST
+      time = createdAt.toLocaleDateString('en-IN', {
+        timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short',
+      })
+    }
   }
   return {
     id:    alert._id || alert.id || index,
