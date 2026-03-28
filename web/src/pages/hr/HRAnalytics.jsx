@@ -26,7 +26,7 @@ export const HRAnalytics = () => {
           <div className="text-sm text-gray-500 mt-1">Total Employees</div>
         </Card>
         <Card className="p-4 text-center">
-          <div className="text-3xl font-bold text-green-600">{overview?.avgWellnessScore != null ? overview.avgWellnessScore.toFixed(1) : '-'}</div>
+          <div className="text-3xl font-bold text-green-600">{overview?.avgWellnessScore != null ? Number(overview.avgWellnessScore).toFixed(1) : '-'}</div>
           <div className="text-sm text-gray-500 mt-1">Avg Wellness Score</div>
         </Card>
         <Card className="p-4 text-center">
