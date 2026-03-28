@@ -1,7 +1,8 @@
 import { PieChart, Pie, Cell, Legend, Tooltip, ResponsiveContainer } from 'recharts'
 import { motion } from 'framer-motion'
 
-export const RiskDonut = ({ data = [], title = 'Risk Distribution' }) => {
+export const RiskDonut = ({ data: _rawData, title = 'Risk Distribution' }) => {
+  const data = _rawData ?? []
   const defaultData = [
     { name: 'Thriving', value: 0, color: '#22C55E' },
     { name: 'Doing Well', value: 0, color: '#0EA5E9' },
