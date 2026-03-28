@@ -66,7 +66,7 @@ router.get('/', requireAuth, async (req, res) => {
       requestId
     });
 
-    res.json({
+    res.json({ success: true, data: {
       consultations,
       pagination: {
         page: parseInt(page),
@@ -74,7 +74,7 @@ router.get('/', requireAuth, async (req, res) => {
         total,
         pages: Math.ceil(total / limit)
       }
-    });
+    } });
   } catch (err) {
     logger.error('Failed to list consultations', { error: err.message });
     res.status(500).json({ error: 'Failed to list consultations' });
@@ -152,7 +152,7 @@ router.post('/', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'SENIOR_
           organizerRefreshToken: clinician.googleProfile.refreshToken,
           attendeeEmails: [employee.email, clinician.email],
           title: `Wellness Consultation - ${employee.firstName} ${employee.lastName}`,
-          description: `VocaCoreâ¢ Wellness Consultation\n\nConsultant: ${clinician.firstName} ${clinician.lastName}\nEmployee: ${employee.firstName} ${employee.lastName}\n\n${notes || ''}`,
+          description: `VocaCoreÃ¢ÂÂ¢ Wellness Consultation\n\nConsultant: ${clinician.firstName} ${clinician.lastName}\nEmployee: ${employee.firstName} ${employee.lastName}\n\n${notes || ''}`,
           startDateTime: new Date(scheduledAt).toISOString(),
           endDateTime: endDateTime.toISOString(),
           timeZone: 'Asia/Kolkata',
@@ -626,7 +626,7 @@ router.post('/request', requireAuth, async (req, res) => {
     const employeeId = (req.user.userId || (req.user.userId || req.user._id))?.toString();
     const { tenantId } = req.user;
 
-    // reason is optional â UI labels it as such
+    // reason is optional Ã¢ÂÂ UI labels it as such
     // Find an available clinician in the same tenant
     const clinician = await User.findOne({
       tenantId,
