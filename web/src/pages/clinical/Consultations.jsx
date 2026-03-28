@@ -6,8 +6,8 @@ import ConsultationCard from '../../components/consultations/ConsultationCard'
 import { ChevronLeft, ChevronRight, Calendar, List, Video, Clock, User } from 'lucide-react'
 import api from '../../services/api'
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-const HOURS = Array.from({ length: 12 }, (_, i) => i + 8) // 8 AM – 7 PM
+// ââ Helpers ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+const HOURS = Array.from({ length: 12 }, (_, i) => i + 8) // 8 AM â 7 PM
 const DAYS  = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 function startOfWeek(date) {
@@ -35,7 +35,7 @@ const STATUS_COLORS = {
   CANCELLED: { bg: 'bg-red-50',    border: 'border-red-300',   text: 'text-red-500'   },
 }
 
-// ── Weekly Calendar ───────────────────────────────────────────────────────────
+// ââ Weekly Calendar âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 function WeekCalendar({ consultations }) {
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()))
 
@@ -51,7 +51,7 @@ function WeekCalendar({ consultations }) {
   const next  = () => { const d = new Date(weekStart); d.setDate(d.getDate() + 7); setWeekStart(d) }
   const today = () => setWeekStart(startOfWeek(new Date()))
 
-  // Build slot map: "YYYY-M-D_H" → [consultations]
+  // Build slot map: "YYYY-M-D_H" â [consultations]
   const slotMap = useMemo(() => {
     const map = {}
     ;(consultations || []).forEach(c => {
@@ -67,7 +67,7 @@ function WeekCalendar({ consultations }) {
     slotMap[`${day.getFullYear()}-${day.getMonth()}-${day.getDate()}_${hour}`] || []
 
   const todayDate = new Date()
-  const weekLabel = `${fmt(weekDays[0], { month: 'short', day: 'numeric' })} – ${fmt(weekDays[6], { month: 'short', day: 'numeric', year: 'numeric' })}`
+  const weekLabel = `${fmt(weekDays[0], { month: 'short', day: 'numeric' })} â ${fmt(weekDays[6], { month: 'short', day: 'numeric', year: 'numeric' })}`
 
   return (
     <div className="space-y-4">
@@ -135,7 +135,7 @@ function WeekCalendar({ consultations }) {
                         return (
                           <div key={ci}
                             className={`rounded-md px-1.5 py-0.5 mb-0.5 border-l-2 text-[11px] cursor-pointer hover:opacity-75 transition select-none ${col.bg} ${col.border} ${col.text}`}
-                            title={`${c.patient?.name || 'Patient'} — ${fmt(dt, { hour: 'numeric', minute: '2-digit' })}`}
+                            title={`${c.patient?.name || 'Patient'} â ${fmt(dt, { hour: 'numeric', minute: '2-digit' })}`}
                           >
                             <div className="font-semibold truncate leading-tight">
                               {c.patient?.name || c.clinician || 'Session'}
@@ -168,7 +168,7 @@ function WeekCalendar({ consultations }) {
   )
 }
 
-// ── Upcoming sidebar ──────────────────────────────────────────────────────────
+// ââ Upcoming sidebar ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 function UpcomingList({ consultations }) {
   const upcoming = useMemo(() => {
     const now = new Date()
@@ -226,7 +226,7 @@ function UpcomingList({ consultations }) {
   )
 }
 
-// ── Main Page ─────────────────────────────────────────────────────────────────
+// ââ Main Page âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 export const Consultations = () => {
   const [modalOpen, setModalOpen] = useState(false)
   const [viewMode, setViewMode]   = useState('calendar')
@@ -238,7 +238,7 @@ export const Consultations = () => {
 
   if (isLoading) return <LoadingScreen />
 
-  const list = consultations?.data || []
+  const list = consultations?.data?.consultations || []
   const now = new Date()
   const upcomingCount = list.filter(c => new Date(c.scheduledAt) >= now && c.status !== 'CANCELLED').length
 
@@ -272,7 +272,7 @@ export const Consultations = () => {
         ))}
       </div>
 
-      {/* ── Calendar view ── */}
+      {/* ââ Calendar view ââ */}
       {viewMode === 'calendar' && (
         <div className="grid grid-cols-1 xl:grid-cols-[1fr_260px] gap-6">
           <Card className="p-5">
@@ -307,7 +307,7 @@ export const Consultations = () => {
         </div>
       )}
 
-      {/* ── List view ── */}
+      {/* ââ List view ââ */}
       {viewMode === 'list' && (
         <div className="grid grid-cols-1 gap-4">
           {list.length === 0 && (
