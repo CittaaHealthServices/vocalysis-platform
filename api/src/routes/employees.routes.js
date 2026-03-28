@@ -72,7 +72,7 @@ router.get('/', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'CLINICIA
       requestId
     });
 
-    res.json({
+    res.json({ success: true, data: {
       employees,
       pagination: {
         page: parseInt(page),
@@ -80,7 +80,7 @@ router.get('/', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'CLINICIA
         total,
         pages: Math.ceil(total / limit)
       }
-    });
+    } });
   } catch (err) {
     logger.error('Failed to list employees', { error: err.message });
     res.status(500).json({ error: 'Failed to list employees' });
