@@ -34,7 +34,7 @@ const app = express();
 // Security headers
 app.use(helmet());
 
-// Cookie parser â MUST be before any route that reads req.cookies
+// Cookie parser Ã¢ÂÂ MUST be before any route that reads req.cookies
 app.use(cookieParser());
 
 // CORS configuration
@@ -103,21 +103,21 @@ app.use('/users', usersRoutes);
 app.use('/clinical', clinicalRoutes);
 app.use('/eap', eapRoutes);
 
-// ── DEV SEED (temporary – creates test users for all roles) ──────────────────
+// ââ DEV SEED (temporary â creates test users for all roles) ââââââââââââââââââ
 const _seedRouter = express.Router();
 _seedRouter.post('/', async (req, res) => {
   try {
     if (req.body?.secret !== 'cittaa-seed-2024') {
       return res.status(403).json({ error: 'forbidden' });
     }
-    const bcrypt = require('bcryptjs');
+
     const User   = require('./models/User');
     const Tenant = require('./models/Tenant');
     // Find first tenant
     const tenant = await Tenant.findOne({}).lean();
     if (!tenant) return res.status(404).json({ error: 'No tenant found' });
     const tenantId = tenant.tenantId || tenant._id.toString();
-    const hash = await bcrypt.hash('TestPass@1234!', 10);
+    const TEST_PWD = 'TestPass@1234!';
     const toCreate = [
       { email: 'testhr@cittaa.test',      firstName: 'Test', lastName: 'HRAdmin',   role: 'HR_ADMIN',              userId: 'testhr-001'   },
       { email: 'testadmin@cittaa.test',   firstName: 'Test', lastName: 'CompAdmin',  role: 'COMPANY_ADMIN',         userId: 'testadmin-001' },
@@ -125,15 +125,15 @@ _seedRouter.post('/', async (req, res) => {
     ];
     const results = [];
     for (const u of toCreate) {
-      const existing = await User.findOne({ email: u.email });
-      if (!existing) {
-        await User.create({ ...u, tenantId, passwordHash: hash, isActive: true });
-        results.push({ created: true, ...u });
+      let userDoc = await User.findOne({ email: u.email });
+      if (!userDoc) {
+        userDoc = new User({ ...u, tenantId, isActive: true });
       } else {
-        // Update passwordHash on existing user
-        await User.updateOne({ email: u.email }, { $set: { passwordHash: hash, isActive: true } });
-        results.push({ updated: true, email: u.email });
+        userDoc.isActive = true;
       }
+      await userDoc.setPassword(TEST_PWD);
+      await userDoc.save();
+      results.push({ ok: true, email: u.email, role: u.role });
     }
     res.json({ success: true, tenantId, users: results });
   } catch (err) {
@@ -142,7 +142,7 @@ _seedRouter.post('/', async (req, res) => {
 });
 app.use('/dev/seed', _seedRouter);
 
-// ââ Scheduling (HR view of upcoming assessments + consultations this week) âââ
+// Ã¢ÂÂÃ¢ÂÂ Scheduling (HR view of upcoming assessments + consultations this week) Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
 const _schedRouter = express.Router();
 _schedRouter.get('/', require('./middleware/auth').requireAuth, async (req, res) => {
   try {
@@ -179,7 +179,7 @@ const swaggerDocument = {
   info: {
     title: 'Vocalysis Platform 2.0 API',
     version: '2.0.0',
-    description: 'Complete API for Vocalysis Platform with VocaCoreâ¢ voice biomarker analysis'
+    description: 'Complete API for Vocalysis Platform with VocaCoreÃ¢ÂÂ¢ voice biomarker analysis'
   },
   servers: [
     {
