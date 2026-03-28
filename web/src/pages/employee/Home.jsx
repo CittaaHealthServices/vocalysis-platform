@@ -28,10 +28,10 @@ export const MyWellnessHome = () => {
             <h2 className="text-2xl font-bold text-app mb-2">Your Wellness Score</h2>
             <p className="text-gray-600 mb-4">
               {wellness?.trend === 'improving'
-                ? '↑ Improving since last check-in'
+                ? 'â Improving since last check-in'
                 : wellness?.trend === 'stable'
-                  ? '→ Stable'
-                  : '↓ Declining'}
+                  ? 'â Stable'
+                  : 'â Declining'}
             </p>
             <Button
               variant="primary"
@@ -95,7 +95,7 @@ export const MyWellnessHome = () => {
             {wellness.upcomingConsultations.map((consultation, idx) => (
               <div key={idx} className="p-4 bg-gradient-to-r from-blue-50 to-sky-50 rounded-xl border border-blue-100">
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-semibold text-app">{consultation.clinician}</p>
+                  <p className="text-sm font-semibold text-app">{consultation.clinicianId?.firstName ? `${consultation.clinicianId.firstName} ${consultation.clinicianId.lastName}` : 'Clinician TBD'}</p>
                   <span className="text-xs text-blue-600 font-medium bg-blue-100 px-2 py-0.5 rounded-full">Upcoming</span>
                 </div>
                 <p className="text-xs text-gray-500 mb-3">
