@@ -21,14 +21,14 @@ export const WellnessCheckIn = () => {
   // Fetch today's check-in count on mount
   useEffect(() => {
     api.get('/sessions/daily-progress')
-      .then(r => setDailyProgress(r.data))
+      .then(r => setDailyProgress(r))
       .catch(() => {}) // non-critical
   }, [])
 
   // Poll the session status after submitting
   const { isPolling, data: pollData, completed, startPolling } = usePolling(
     () => api.get(`/sessions/${sessionId}`),
-    // ✅ Fix: API returns { session: { status } } not { status }
+    // â Fix: API returns { session: { status } } not { status }
     (result) => {
       const status = result?.data?.session?.status || result?.session?.status
       return status === 'completed' || status === 'failed'
@@ -39,7 +39,7 @@ export const WellnessCheckIn = () => {
   // Advance to Results step when polling finishes
   useEffect(() => {
     if (completed && currentStep === 2) {
-      // ✅ Fix: extract session from nested response
+      // â Fix: extract session from nested response
       const s = pollData?.data?.session || pollData?.session
       setSessionData(s)
       setCurrentStep(3)
@@ -48,7 +48,7 @@ export const WellnessCheckIn = () => {
 
   const handleEnvironmentCheck = () => {
     if (dailyProgress && !dailyProgress.canCheckIn) {
-      toast.error(`You've reached the daily maximum of ${DAILY_MAX} check-ins. Great job today! 🎉`)
+      toast.error(`You've reached the daily maximum of ${DAILY_MAX} check-ins. Great job today! ð`)
       return
     }
     setCurrentStep(1)
@@ -62,7 +62,7 @@ export const WellnessCheckIn = () => {
     formData.append('type', 'wellness-checkin')
 
     try {
-      // Note: do NOT set Content-Type manually — let browser set multipart boundary
+      // Note: do NOT set Content-Type manually â let browser set multipart boundary
       const response = await api.post('/sessions', formData)
       // api interceptor returns response.data directly, so response IS the body
       const newSessionId = response?.session?.id || response?.session?._id
@@ -83,7 +83,7 @@ export const WellnessCheckIn = () => {
     }
   }
 
-  // ✅ Fix: pull wellness data from correct model fields
+  // â Fix: pull wellness data from correct model fields
   const wellness = sessionData?.employeeWellnessOutput || {}
   const riskLevel = sessionData?.vocacoreResults?.overallRiskLevel || 'green'
 
@@ -95,11 +95,11 @@ export const WellnessCheckIn = () => {
   }[riskLevel] || 'bg-green-50 border-green-200 text-green-900'
 
   const wellnessLevelLabel = {
-    thriving: '😊 Thriving',
-    healthy: '🙂 Healthy',
-    at_risk: '😐 At Risk',
-    in_crisis: '😟 Needs Support',
-  }[wellness.wellnessLevel] || '🙂 Healthy'
+    thriving: 'ð Thriving',
+    healthy: 'ð Healthy',
+    at_risk: 'ð At Risk',
+    in_crisis: 'ð Needs Support',
+  }[wellness.wellnessLevel] || 'ð Healthy'
 
   // Build wheel data from dimensional scores
   const dimScores = sessionData?.vocacoreResults?.dimensionalScores || {}
@@ -120,7 +120,7 @@ export const WellnessCheckIn = () => {
             <span className="text-sm font-medium text-gray-700">Today's Check-ins</span>
             <span className={`text-sm font-bold ${dailyProgress.metDailyGoal ? 'text-green-600' : 'text-cittaa-700'}`}>
               {dailyProgress.todayCount} / {DAILY_MAX}
-              {dailyProgress.metDailyGoal && ' ✓ Goal met!'}
+              {dailyProgress.metDailyGoal && ' â Goal met!'}
             </span>
           </div>
           <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
@@ -188,7 +188,7 @@ export const WellnessCheckIn = () => {
 
           {dailyProgress && !dailyProgress.canCheckIn ? (
             <div className="p-4 bg-green-50 rounded-lg border border-green-200 text-center">
-              <p className="text-green-800 font-semibold text-lg">🎉 You've completed all {DAILY_MAX} check-ins for today!</p>
+              <p className="text-green-800 font-semibold text-lg">ð You've completed all {DAILY_MAX} check-ins for today!</p>
               <p className="text-green-700 text-sm mt-1">Come back tomorrow to continue tracking your wellness.</p>
             </div>
           ) : (
@@ -257,7 +257,7 @@ export const WellnessCheckIn = () => {
               <h3 className="text-lg font-semibold text-app">Wellness Suggestions</h3>
               <ul className="space-y-2">
                 {wellness.personalizedRecommendations.map((r, idx) => (
-                  <li key={idx} className="p-3 bg-green-50 rounded-lg text-green-900">✓ {r}</li>
+                  <li key={idx} className="p-3 bg-green-50 rounded-lg text-green-900">â {r}</li>
                 ))}
               </ul>
             </div>
@@ -267,13 +267,13 @@ export const WellnessCheckIn = () => {
           {dailyProgress && !dailyProgress.metDailyGoal && (
             <div className="mt-6 p-4 bg-cittaa-50 rounded-lg border border-cittaa-200 text-center">
               <p className="text-cittaa-800 font-medium">
-                {dailyProgress.remaining} more check-in{dailyProgress.remaining !== 1 ? 's' : ''} to reach your daily goal of {DAILY_MIN} 💪
+                {dailyProgress.remaining} more check-in{dailyProgress.remaining !== 1 ? 's' : ''} to reach your daily goal of {DAILY_MIN} ðª
               </p>
             </div>
           )}
           {dailyProgress?.metDailyGoal && (
             <div className="mt-6 p-4 bg-green-50 rounded-lg border border-green-200 text-center">
-              <p className="text-green-800 font-medium">🎉 Daily goal of {DAILY_MIN} check-ins reached!</p>
+              <p className="text-green-800 font-medium">ð Daily goal of {DAILY_MIN} check-ins reached!</p>
             </div>
           )}
 
@@ -288,7 +288,7 @@ export const WellnessCheckIn = () => {
                   setCurrentStep(0)
                   setSessionId(null)
                   setSessionData(null)
-                  api.get('/sessions/daily-progress').then(r => setDailyProgress(r.data)).catch(() => {})
+                  api.get('/sessions/daily-progress').then(r => setDailyProgress(r)).catch(() => {})
                 }}
                 className="flex-1"
               >
