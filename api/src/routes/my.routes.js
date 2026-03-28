@@ -1,5 +1,5 @@
 /**
- * /my/* routes â Employee self-service endpoints
+ * /my/* routes Ã¢ÂÂ Employee self-service endpoints
  * All routes require authentication as EMPLOYEE (or any authenticated user accessing their own data)
  */
 const express = require('express');
@@ -16,6 +16,7 @@ const logger = require('../utils/logger');
 router.get('/wellness', requireAuth, async (req, res) => {
   try {
     const userId = (req.user.userId || req.user._id).toString();
+    const userDoc = await User.findOne({ userId }).select('firstName lastName').lean();
 
     // Latest sessions for mood trend
     const recentSessions = await Session.find({ patientId: userId })
@@ -54,8 +55,8 @@ router.get('/wellness', requireAuth, async (req, res) => {
     res.json({
       success: true,
       data: {
-        firstName: req.user.firstName || '',
-        lastName: req.user.lastName || '',
+        firstName: userDoc?.firstName || '',
+        lastName: userDoc?.lastName || '',
         wellnessScore: latestScore,
         streak,
         recentSessions: recentSessions.map(s => ({
