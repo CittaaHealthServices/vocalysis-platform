@@ -151,7 +151,7 @@ router.get('/trends', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'CL
       requestId
     });
 
-    res.json({ trends, period, daysBack });
+    res.json({ success: true, data: { trends, period, daysBack } });
   } catch (err) {
     logger.error('Failed to get trend data', { error: err.message });
     res.status(500).json({ error: 'Failed to get trends' });
@@ -211,7 +211,7 @@ router.get('/departments', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN'
       requestId
     });
 
-    res.json({ departments: departmentData });
+    res.json({ success: true, data: { departments: departmentData } });
   } catch (err) {
     logger.error('Failed to get department analytics', { error: err.message });
     res.status(500).json({ error: 'Failed to get department analytics' });
