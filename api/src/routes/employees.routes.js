@@ -111,13 +111,11 @@ router.post('/', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN']), async 
 
     // Generate temporary password
     const tempPassword = crypto.randomBytes(8).toString('hex');
-    const hashedPassword = await bcrypt.hash(tempPassword, 10);
 
     const employee = new User({
       email,
       firstName,
       lastName,
-      password: hashedPassword,
       role: 'EMPLOYEE',
       tenantId,
       department,
@@ -126,6 +124,7 @@ router.post('/', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN']), async 
       createdAt: new Date()
     });
 
+    await employee.setPassword(tempPassword);
     await employee.save();
 
     // Send welcome email
@@ -477,13 +476,11 @@ bulkImportQueue.process(async (job) => {
         }
 
         const tempPassword = crypto.randomBytes(8).toString('hex');
-        const hashedPassword = await bcrypt.hash(tempPassword, 10);
 
         const employee = new User({
           email,
           firstName,
           lastName,
-          password: hashedPassword,
           role: 'EMPLOYEE',
           tenantId,
           department,
