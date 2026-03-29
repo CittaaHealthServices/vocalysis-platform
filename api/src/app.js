@@ -34,7 +34,7 @@ const app = express();
 // Security headers
 app.use(helmet());
 
-// Cookie parser Ã¢ÂÂ MUST be before any route that reads req.cookies
+// Cookie parser ÃÂ¢ÃÂÃÂ MUST be before any route that reads req.cookies
 app.use(cookieParser());
 
 // CORS configuration
@@ -103,7 +103,7 @@ app.use('/users', usersRoutes);
 app.use('/clinical', clinicalRoutes);
 app.use('/eap', eapRoutes);
 
-// ââ DEV SEED (temporary â creates test users for all roles) ââââââââââââââââââ
+// Ã¢ÂÂÃ¢ÂÂ DEV SEED (temporary Ã¢ÂÂ creates test users for all roles) Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
 const _seedRouter = express.Router();
 _seedRouter.post('/', async (req, res) => {
   try {
@@ -119,9 +119,9 @@ _seedRouter.post('/', async (req, res) => {
     const tenantId = tenant.tenantId || tenant._id.toString();
     const TEST_PWD = 'TestPass@1234!';
     const toCreate = [
-      { email: 'testhr@cittaa.test',      firstName: 'Test', lastName: 'HRAdmin',   role: 'HR_ADMIN',              userId: 'testhr-001'   },
-      { email: 'testadmin@cittaa.test',   firstName: 'Test', lastName: 'CompAdmin',  role: 'COMPANY_ADMIN',         userId: 'testadmin-001' },
-      { email: 'testclinician@cittaa.test', firstName: 'Test', lastName: 'Clinician', role: 'CLINICAL_PSYCHOLOGIST', userId: 'testclin-001' },
+      { email: 'hr.admin@cittaa.in',      firstName: 'Test', lastName: 'HRAdmin',   role: 'HR_ADMIN',              userId: 'hr-admin-001'   },
+      { email: 'company.admin@cittaa.in',   firstName: 'Test', lastName: 'CompAdmin',  role: 'COMPANY_ADMIN',         userId: 'company-admin-001' },
+      { email: 'clinician@cittaa.in', firstName: 'Test', lastName: 'Clinician', role: 'CLINICAL_PSYCHOLOGIST', userId: 'testclin-001' },
     ];
     const results = [];
     for (const u of toCreate) {
@@ -142,7 +142,7 @@ _seedRouter.post('/', async (req, res) => {
 });
 app.use('/dev/seed', _seedRouter);
 
-// Ã¢ÂÂÃ¢ÂÂ Scheduling (HR view of upcoming assessments + consultations this week) Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ Scheduling (HR view of upcoming assessments + consultations this week) ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
 const _schedRouter = express.Router();
 _schedRouter.get('/', require('./middleware/auth').requireAuth, async (req, res) => {
   try {
@@ -179,7 +179,7 @@ const swaggerDocument = {
   info: {
     title: 'Vocalysis Platform 2.0 API',
     version: '2.0.0',
-    description: 'Complete API for Vocalysis Platform with VocaCoreÃ¢ÂÂ¢ voice biomarker analysis'
+    description: 'Complete API for Vocalysis Platform with VocaCoreÃÂ¢ÃÂÃÂ¢ voice biomarker analysis'
   },
   servers: [
     {
