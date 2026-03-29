@@ -1,5 +1,5 @@
 /**
- * /users/* routes â User self-service and management
+ * /users/* routes Ã¢ÂÂ User self-service and management
  */
 const express = require('express');
 const router = express.Router();
@@ -9,7 +9,7 @@ const Tenant = require('../models/Tenant');
 const logger = require('../utils/logger');
 
 // ============================================================================
-// GET /users/me â current user's full profile
+// GET /users/me Ã¢ÂÂ current user's full profile
 // ============================================================================
 router.get('/me', requireAuth, async (req, res) => {
   try {
@@ -23,7 +23,7 @@ router.get('/me', requireAuth, async (req, res) => {
 });
 
 // ============================================================================
-// PATCH /users/me â update own profile
+// PATCH /users/me Ã¢ÂÂ update own profile
 // ============================================================================
 router.patch('/me', requireAuth, async (req, res) => {
   try {
@@ -45,7 +45,7 @@ router.patch('/me', requireAuth, async (req, res) => {
 });
 
 // ============================================================================
-// GET /users â list users in tenant (admin/hr only)
+// GET /users Ã¢ÂÂ list users in tenant (admin/hr only)
 //   Super admins may pass ?tenantId=xxx to list users for any tenant
 // ============================================================================
 router.get('/', requireAuth, requireRole(['COMPANY_ADMIN', 'HR_ADMIN', 'CITTAA_SUPER_ADMIN']), async (req, res) => {
@@ -72,7 +72,7 @@ router.get('/', requireAuth, requireRole(['COMPANY_ADMIN', 'HR_ADMIN', 'CITTAA_S
 });
 
 // ============================================================================
-// POST /users â create a user in any tenant (super admin only)
+// POST /users Ã¢ÂÂ create a user in any tenant (super admin only)
 // ============================================================================
 router.post('/', requireAuth, requireRole(['CITTAA_SUPER_ADMIN', 'COMPANY_ADMIN']), async (req, res) => {
   try {
@@ -92,7 +92,7 @@ router.post('/', requireAuth, requireRole(['CITTAA_SUPER_ADMIN', 'COMPANY_ADMIN'
       return res.status(400).json({ success: false, error: { message: 'tenantId is required' } });
     }
 
-    // Scope duplicate check to the target tenant â the same email is allowed
+    // Scope duplicate check to the target tenant Ã¢ÂÂ the same email is allowed
     // across different tenants (e.g. a consultant working at multiple companies)
     const existing = await User.findOne({ email: email.toLowerCase(), tenantId: targetTenantId });
     if (existing) {
@@ -102,7 +102,6 @@ router.post('/', requireAuth, requireRole(['CITTAA_SUPER_ADMIN', 'COMPANY_ADMIN'
     const crypto = require('crypto');
     const bcrypt = require('bcryptjs');
     const tempPassword = password || crypto.randomBytes(8).toString('hex');
-    const passwordHash = await bcrypt.hash(tempPassword, 10);
 
     const newUser = new User({
       email: email.toLowerCase(),
@@ -110,7 +109,6 @@ router.post('/', requireAuth, requireRole(['CITTAA_SUPER_ADMIN', 'COMPANY_ADMIN'
       lastName: lastName.trim(),
       role,
       tenantId: targetTenantId,
-      passwordHash,
       isActive: true,
       isEmailVerified: false,
       loginAttempts: 0,
@@ -119,6 +117,7 @@ router.post('/', requireAuth, requireRole(['CITTAA_SUPER_ADMIN', 'COMPANY_ADMIN'
       notificationPreferences: { emailAlerts: true, inAppAlerts: true },
       createdBy: (req.user.userId || req.user._id),
     });
+    await newUser.setPassword(tempPassword);
     await newUser.save();
 
     // Send welcome email with temp password
@@ -150,7 +149,7 @@ router.post('/', requireAuth, requireRole(['CITTAA_SUPER_ADMIN', 'COMPANY_ADMIN'
 });
 
 // ============================================================================
-// GET /users/clinicians â list clinicians/psychologists in tenant
+// GET /users/clinicians Ã¢ÂÂ list clinicians/psychologists in tenant
 // ============================================================================
 router.get('/clinicians', requireAuth, async (req, res) => {
   try {
@@ -169,7 +168,7 @@ router.get('/clinicians', requireAuth, async (req, res) => {
 });
 
 // ============================================================================
-// POST /users/clinicians â add new psychologist/clinician (admin only)
+// POST /users/clinicians Ã¢ÂÂ add new psychologist/clinician (admin only)
 // ============================================================================
 router.post('/clinicians', requireAuth, requireRole(['COMPANY_ADMIN', 'CITTAA_SUPER_ADMIN']), async (req, res) => {
   try {
@@ -188,7 +187,7 @@ router.post('/clinicians', requireAuth, requireRole(['COMPANY_ADMIN', 'CITTAA_SU
       return res.status(400).json({ success: false, error: { message: 'Role must be CLINICAL_PSYCHOLOGIST or SENIOR_CLINICIAN' } });
     }
 
-    // Scope to tenant â same email allowed across different tenants
+    // Scope to tenant Ã¢ÂÂ same email allowed across different tenants
     const existing = await User.findOne({ email: email.toLowerCase(), tenantId: req.user.tenantId });
     if (existing) return res.status(409).json({ success: false, error: { message: 'A user with this email already exists in this organisation' } });
 
@@ -244,7 +243,7 @@ router.post('/clinicians', requireAuth, requireRole(['COMPANY_ADMIN', 'CITTAA_SU
 });
 
 // ============================================================================
-// PATCH /users/:id â admin update (deactivate / change role etc.)
+// PATCH /users/:id Ã¢ÂÂ admin update (deactivate / change role etc.)
 // ============================================================================
 router.patch('/:id', requireAuth, requireRole(['COMPANY_ADMIN', 'HR_ADMIN', 'CITTAA_SUPER_ADMIN']), async (req, res) => {
   try {
