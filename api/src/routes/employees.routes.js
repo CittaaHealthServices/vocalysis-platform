@@ -127,6 +127,8 @@ router.post('/', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN']), async 
     await employee.setPassword(tempPassword);
     await employee.save();
 
+    // Post-save operations (non-fatal)
+    try {
     // Send welcome email
     const tenant = await Tenant.findById(tenantId);
     await emailService.sendWelcomeEmail({
@@ -149,6 +151,9 @@ router.post('/', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN']), async 
       requestId,
       changeSnapshot: { email, firstName, lastName, department }
     });
+    } catch (postSaveErr) {
+      logger.warn('Post-save operations failed', { error: postSaveErr.message });
+    }
 
     res.status(201).json({
       message: 'Employee added successfully',
