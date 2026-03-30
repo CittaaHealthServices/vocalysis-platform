@@ -34,7 +34,7 @@ const app = express();
 // Security headers
 app.use(helmet());
 
-// Cookie parser ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ MUST be before any route that reads req.cookies
+// Cookie parser ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ MUST be before any route that reads req.cookies
 app.use(cookieParser());
 
 // CORS configuration
@@ -103,7 +103,7 @@ app.use('/users', usersRoutes);
 app.use('/clinical', clinicalRoutes);
 app.use('/eap', eapRoutes);
 
-// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ DEV SEED (temporary ÃÂ¢ÃÂÃÂ creates test users for all roles) ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
+// ÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂ DEV SEED (temporary ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ creates test users for all roles) ÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂ
 const _seedRouter = express.Router();
 _seedRouter.post('/', async (req, res) => {
   try {
@@ -121,7 +121,7 @@ _seedRouter.post('/', async (req, res) => {
     const toCreate = [
       { email: 'hr.admin@cittaa.in',      firstName: 'Test', lastName: 'HRAdmin',   role: 'HR_ADMIN',              userId: 'hr-admin-001'   },
       { email: 'company.admin@cittaa.in',   firstName: 'Test', lastName: 'CompAdmin',  role: 'COMPANY_ADMIN',         userId: 'company-admin-001' },
-      { email: 'clinician@cittaa.in', firstName: 'Test', lastName: 'Clinician', role: 'CLINICAL_PSYCHOLOGIST', userId: 'testclin-001' },
+      { email: 'clinician@cittaa.in', firstName: 'Test', lastName: 'Clinician', role: 'CLINICAL_PSYCHOLOGIST', userId: 'clinician-001' },
       { email: 'employee@cittaa.in', firstName: 'Demo', lastName: 'Employee', role: 'EMPLOYEE', userId: 'employee-001' },
     ];
     const results = [];
@@ -143,7 +143,7 @@ _seedRouter.post('/', async (req, res) => {
 });
 app.use('/dev/seed', _seedRouter);
 
-// ÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂ Scheduling (HR view of upcoming assessments + consultations this week) ÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂ
+// ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Scheduling (HR view of upcoming assessments + consultations this week) ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ
 const _schedRouter = express.Router();
 _schedRouter.get('/', require('./middleware/auth').requireAuth, async (req, res) => {
   try {
@@ -180,7 +180,7 @@ const swaggerDocument = {
   info: {
     title: 'Vocalysis Platform 2.0 API',
     version: '2.0.0',
-    description: 'Complete API for Vocalysis Platform with VocaCoreÃÂÃÂ¢ÃÂÃÂÃÂÃÂ¢ voice biomarker analysis'
+    description: 'Complete API for Vocalysis Platform with VocaCoreÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ voice biomarker analysis'
   },
   servers: [
     {
