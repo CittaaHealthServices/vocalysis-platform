@@ -11,6 +11,8 @@ scikit-learn>=1.3.0
 xgboost>=2.0.0
 joblib>=1.3.0
 pandas>=2.0.0
+# Background noise removal (critical for Indian real-world environments)
+noisereduce>=3.0.0
 # ElevenLabs voice generation pipeline
 elevenlabs>=1.0.0
 httpx[socks]

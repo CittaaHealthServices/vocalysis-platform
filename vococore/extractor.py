@@ -378,14 +378,16 @@ class FeatureExtractor:
             }
 
     def _extract_hnr(self, audio_array):
-        """Extract Harmonics-to-Noise Ratio using parselmouth."""
+        """Extract Harmonics-to-Noise Ratio using parselmouth.
+        Indian male voices go down to ~75 Hz; using 75 as minimum pitch
+        captures low-register Tamil/Kannada male speakers correctly."""
         try:
             sound = parselmouth.Sound(audio_array, sampling_frequency=self.sr)
 
-            # Extract harmonicity
+            # Extract harmonicity — minimum_pitch=75 for Indian voice floor
             harmonicity = sound.to_harmonicity_cc(
                 time_step=0.010,
-                minimum_pitch=50,
+                minimum_pitch=75,
                 silence_threshold=0.1
             )
 
@@ -541,8 +543,12 @@ class FeatureExtractor:
         """
         Extract comprehensive acoustic features.
 
+        Audio is expected to arrive already denoised and peak-normalised
+        from QualityChecker.  If called directly (e.g. from elevenlabs_trainer),
+        it works on the raw array — ElevenLabs-generated audio is already clean.
+
         Args:
-            audio_array: Audio time series (numpy array)
+            audio_array: Audio time series (numpy array, float32 mono)
             sample_rate: Sample rate in Hz
 
         Returns:

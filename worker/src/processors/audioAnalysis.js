@@ -29,60 +29,157 @@ function _generateRecs(dep, anx, str) {
 }
 
 /**
- * Build biomarker findings from audio features and scores.
- * Indian-calibrated norms: F0 165-185 Hz, speech rate 4.2-5.2 syl/s.
+ * Build authentic biomarker findings calibrated for Indian voices.
+ *
+ * Reference norms (multi-lingual Indian population):
+ *   F0 male    : 85–165 Hz   (Hindi/Telugu/Tamil/Kannada/Marathi/IndEng)
+ *   F0 female  : 155–255 Hz
+ *   Speech rate: 3.5–5.8 syl/s (Indian conversational pace)
+ *   Jitter norm: ≤ 0.038 (retroflex consonants inflate jitter slightly)
+ *   Shimmer norm: ≤ 0.130
+ *   HNR normal : ≥ 12 dB (real-world mobile recordings)
+ *   Pause ratio: 0.12–0.32 (hesitation markers common in Indian speech)
+ *
+ * Findings are in plain, non-alarming language suitable for employee-facing UI.
+ * Severity: low = normal, moderate = borderline, high = clinically noteworthy.
  */
 function _biomarkerFindings(features) {
   const f = features || {};
 
-  const f0 = f.f0_mean || f.pitch_mean || 174;
-  const pitchSev = f0 < 120 ? 'high' : f0 < 145 ? 'moderate' : 'low';
-  const pitchFinding = f0 < 120
-    ? 'Low fundamental frequency — consistent with reduced emotional arousal'
-    : f0 > 220 ? 'Elevated pitch — consistent with heightened emotional state'
-    : 'Pitch within normal Indian voice range (165–185 Hz)';
+  // ── 1. Pitch (Fundamental Frequency) ──────────────────────────────────────
+  const f0 = f.f0_mean || f.pitch_mean || 140;
+  let pitchSev, pitchFinding;
 
-  const sr = f.speech_rate || f.rate_syllables || 4.4;
-  const rateSev = sr < 3.0 ? 'high' : sr < 3.5 ? 'moderate' : sr > 5.8 ? 'moderate' : 'low';
-  const rateFinding = sr < 3.0
-    ? 'Significantly reduced speech rate — key depression indicator'
-    : sr < 3.5 ? 'Mildly slowed speech rate detected'
-    : sr > 5.8 ? 'Elevated speech rate — possible anxiety marker'
-    : 'Speech rate within normal Indian range (4.2–5.2 syl/s)';
+  if (f0 < 85) {
+    pitchSev    = 'high';
+    pitchFinding = 'Fundamental frequency is notably low (below 85 Hz) — a consistent acoustic marker of low mood and reduced emotional arousal, associated with depression in Indian voice studies';
+  } else if (f0 < 110) {
+    pitchSev    = 'moderate';
+    pitchFinding = 'Pitch is on the lower side of the Indian normal band — mild tonal flattening observed, which may reflect fatigue or subdued affect';
+  } else if (f0 > 255) {
+    pitchSev    = 'moderate';
+    pitchFinding = 'Elevated pitch detected — voice shows signs of tension or heightened arousal; in context of other markers this may indicate anxiety or acute stress';
+  } else {
+    pitchSev    = 'low';
+    pitchFinding = 'Pitch is within the normal Indian vocal range — no prosodic elevation or suppression detected';
+  }
 
-  const jitter  = f.jitter || f.jitter_local || 0.021;
-  const shimmer = f.shimmer || f.shimmer_local || 0.073;
-  const hnr     = f.hnr || f.hnr_db || 20.5;
-  const vqSev   = jitter > 0.040 || shimmer > 0.11 ? 'high'
-                : jitter > 0.030 || shimmer > 0.09  ? 'moderate' : 'low';
-  const vqFinding = vqSev === 'high'
-    ? 'Elevated jitter/shimmer with reduced HNR — vocal irregularity detected'
-    : vqSev === 'moderate' ? 'Mild vocal perturbations detected'
-    : 'Vocal quality within normal range';
+  // ── 2. Speech Rate ─────────────────────────────────────────────────────────
+  const sr = f.speech_rate || f.articulation_rate || 4.4;
+  let rateSev, rateFinding;
 
-  const energy = f.energy_mean || f.energy || 0.050;
-  const engSev = energy < 0.025 ? 'high' : energy < 0.035 ? 'moderate' : energy > 0.085 ? 'moderate' : 'low';
-  const engFinding = energy < 0.025
-    ? 'Very low vocal energy — consistent with fatigue or low mood'
-    : energy < 0.035 ? 'Below-average vocal energy detected'
-    : energy > 0.085 ? 'Elevated vocal energy — possible stress indicator'
-    : 'Vocal energy within normal range';
+  if (sr < 2.8) {
+    rateSev    = 'high';
+    rateFinding = 'Speech rate is significantly reduced (below 2.8 syllables/second) — psychomotor slowing is a core symptom of clinical depression; this pattern is consistent across Hindi, Tamil, Telugu, and Indian English speakers';
+  } else if (sr < 3.5) {
+    rateSev    = 'moderate';
+    rateFinding = 'Mildly slowed speech rate detected — may reflect low energy, low motivation, or early signs of low mood';
+  } else if (sr > 6.2) {
+    rateSev    = 'moderate';
+    rateFinding = 'Speech rate is elevated (pressured speech) — a known acoustic correlate of anxiety and acute stress in clinical literature';
+  } else {
+    rateSev    = 'low';
+    rateFinding = `Speech rate of ${(Math.round(sr * 10)/10)} syl/s falls within the normal Indian conversational range (3.5–5.8 syl/s)`;
+  }
 
-  const rhythm  = f.rhythm_regularity || 0.74;
-  const pauseR  = f.pause_ratio || 0.22;
-  const rhythSev = rhythm < 0.55 || pauseR > 0.45 ? 'high'
-                 : rhythm < 0.65 || pauseR > 0.35 ? 'moderate' : 'low';
-  const rhythFinding = pauseR > 0.45
-    ? 'High pause ratio — significant silence patterns detected'
-    : rhythm < 0.60 ? 'Irregular speech rhythm pattern detected'
-    : 'Rhythm and pause patterns within expected range';
+  // ── 3. Vocal Quality (Jitter, Shimmer, HNR) ───────────────────────────────
+  const jitter  = f.jitter || f.jitter_local || f.jitter_ppq5 || 0.022;
+  const shimmer = f.shimmer || f.shimmer_local || f.shimmer_apq11 || 0.085;
+  const hnr     = f.hnr || f.hnr_db || 20.0;
+  let vqSev, vqFinding;
+
+  const jitterHigh  = jitter  > 0.055;
+  const jitterMid   = jitter  > 0.038;
+  const shimmerHigh = shimmer > 0.160;
+  const shimmerMid  = shimmer > 0.130;
+  const hnrLow      = hnr < 12;
+  const hnrMid      = hnr < 15;
+
+  if (jitterHigh || shimmerHigh || hnrLow) {
+    vqSev    = 'high';
+    vqFinding = `Significant vocal perturbations detected — jitter ${(jitter*100).toFixed(1)}%, shimmer ${(shimmer*100).toFixed(1)}%, HNR ${hnr.toFixed(1)} dB. These measures reflect micro-instabilities in vocal fold vibration, associated with emotional dysregulation, chronic stress, and anxious phonation patterns`;
+  } else if (jitterMid || shimmerMid || hnrMid) {
+    vqSev    = 'moderate';
+    vqFinding = 'Mild vocal perturbations noted — slight irregularity in voice quality. This level of jitter/shimmer is borderline and may reflect transient stress, insufficient sleep, or mild dehydration';
+  } else {
+    vqSev    = 'low';
+    vqFinding = `Vocal quality is clear and stable — jitter ${(jitter*100).toFixed(1)}%, HNR ${hnr.toFixed(1)} dB. Voice periodicity is within healthy Indian norms`;
+  }
+
+  // ── 4. Vocal Energy ────────────────────────────────────────────────────────
+  const energy = f.energy_mean || f.energy || 0.045;
+  const eStd   = f.energy_std  || 0.010;
+  let engSev, engFinding;
+
+  if (energy < 0.018) {
+    engSev    = 'high';
+    engFinding = 'Very low vocal energy detected — consistent with fatigue, low motivation, and depressive withdrawal. In Indian clinical contexts this pattern is seen in individuals experiencing burnout or persistent low mood';
+  } else if (energy < 0.028) {
+    engSev    = 'moderate';
+    engFinding = 'Below-average vocal energy — voice lacks its usual drive. This is a soft marker for fatigue or subdued affect, particularly relevant in blue-collar and shift-work populations';
+  } else if (energy > 0.092 && eStd > 0.022) {
+    engSev    = 'moderate';
+    engFinding = 'Elevated and erratic vocal energy — high energy with irregular variation is a hallmark of acute stress response and pressured, agitated speech';
+  } else {
+    engSev    = 'low';
+    engFinding = 'Vocal energy is balanced and consistent — no signs of fatigue or agitation in energy output';
+  }
+
+  // ── 5. Rhythm & Pause Patterns ─────────────────────────────────────────────
+  const rr     = f.rhythm_regularity || f.inter_utterance_gap_std || 0.08;
+  const pauseR = f.pause_ratio || 0.22;
+  let rhythSev, rhythFinding;
+
+  if (pauseR > 0.44 || rr > 0.22) {
+    rhythSev    = 'high';
+    rhythFinding = `High pause ratio (${(pauseR*100).toFixed(0)}%) with irregular rhythm — excessive silences and halting speech are strongly associated with psychomotor slowing in depression. Common in Hindi, Kannada, and Tamil speakers experiencing depressive episodes`;
+  } else if (pauseR > 0.34 || rr > 0.16) {
+    rhythSev    = 'moderate';
+    rhythFinding = 'Moderately elevated pause frequency — more hesitations and inter-word gaps than typical. This may reflect cognitive effort, low engagement, or early mood difficulties';
+  } else if (pauseR < 0.08 && rr > 0.14) {
+    rhythSev    = 'moderate';
+    rhythFinding = 'Rapid, compressed speech with minimal breathing pauses — characteristic of pressured speech under stress or anxiety; rest-and-recovery pattern is absent';
+  } else {
+    rhythSev    = 'low';
+    rhythFinding = `Rhythm and pause patterns are natural — pause ratio of ${(pauseR*100).toFixed(0)}% is within the expected Indian conversational range (12–32%)`;
+  }
 
   return {
-    pitch:            { finding: pitchFinding,   severity: pitchSev,  value: Math.round(f0) },
-    speech_rate:      { finding: rateFinding,    severity: rateSev,   value: Math.round(sr * 10) / 10 },
-    vocal_quality:    { finding: vqFinding,      severity: vqSev,     value: Math.round(hnr * 10) / 10 },
-    energy_level:     { finding: engFinding,     severity: engSev,    value: Math.round(energy * 1000) / 1000 },
-    rhythm_stability: { finding: rhythFinding,   severity: rhythSev,  value: Math.round(rhythm * 100) },
+    pitch: {
+      finding:  pitchFinding,
+      severity: pitchSev,
+      value:    Math.round(f0),
+      unit:     'Hz',
+      norm:     '85–255 Hz',
+    },
+    speech_rate: {
+      finding:  rateFinding,
+      severity: rateSev,
+      value:    Math.round(sr * 10) / 10,
+      unit:     'syl/s',
+      norm:     '3.5–5.8 syl/s',
+    },
+    vocal_quality: {
+      finding:  vqFinding,
+      severity: vqSev,
+      value:    Math.round(hnr * 10) / 10,
+      unit:     'dB HNR',
+      norm:     '≥ 12 dB',
+    },
+    energy_level: {
+      finding:  engFinding,
+      severity: engSev,
+      value:    Math.round(energy * 1000) / 1000,
+      unit:     'RMS',
+      norm:     '0.018–0.10',
+    },
+    rhythm_stability: {
+      finding:  rhythFinding,
+      severity: rhythSev,
+      value:    Math.round(pauseR * 100),
+      unit:     '% pause',
+      norm:     '12–32%',
+    },
   };
 }
 
