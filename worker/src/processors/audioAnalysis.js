@@ -157,47 +157,51 @@ module.exports = async function audioAnalysisProcessor(job) {
     logger.info('Step 3: Updating session document');
     job.progress(35);
 
-    sessionDoc = await Session.findById(sessionId);
-    if (!sessionDoc) throw new Error(`Session ${sessionId} not found`);
-
-    // Populate fields the frontend reads (via GET /sessions/:id)
-    sessionDoc.vocacoreResults = {
-      overallRiskLevel: riskLevel,
-      riskScore:        Math.round((dep + anx + str) / 3),
-      confidence:       confScore,
-      dimensionalScores: {
-        depression: dep,
-        anxiety:    anx,
-        stress:     str,
-        burnout:    Math.round(str * 0.8),
-        engagement: Math.round(100 - str * 0.5),
+    // ✅ Use findByIdAndUpdate + $set to guarantee all fields are written to MongoDB.
+    // Using save() on subdocuments without markModified() can silently drop fields.
+    const now = new Date();
+    const updateResult = await Session.findByIdAndUpdate(
+      sessionId,
+      {
+        $set: {
+          status:          'completed',
+          analysisStatus:  'completed',
+          analyzedAt:      now,
+          'vocacoreResults': {
+            overallRiskLevel: riskLevel,
+            riskScore:        Math.round((dep + anx + str) / 3),
+            confidence:       confScore,
+            dimensionalScores: {
+              depression: dep,
+              anxiety:    anx,
+              stress:     str,
+              burnout:    Math.round(str * 0.8),
+              engagement: Math.round(100 - str * 0.5),
+            },
+            keyIndicators:           [],
+            clinicalRecommendations: recs,
+            algorithmVersion:        scorerUsed,
+            processedAt:             now,
+          },
+          'employeeWellnessOutput': {
+            wellnessScore,
+            wellnessLevel,
+            personalizedRecommendations: recs,
+            actionItems:     [],
+            nextCheckInDate: new Date(Date.now() + 7 * 86400000),
+          },
+          audioFeatures:   featuresData,
+          // legacy
+          analysisResults: { overallRiskLevel: riskLevel, confidence: confScore, timestamp: now },
+          'audioMetadata.processingCompletedAt': now,
+          'audioMetadata.processingStatus':      'completed',
+        }
       },
-      keyIndicators:          [],
-      clinicalRecommendations: recs,
-      algorithmVersion:        scorerUsed,
-      processedAt:             new Date(),
-    };
+      { new: true }
+    );
 
-    sessionDoc.employeeWellnessOutput = {
-      wellnessScore,
-      wellnessLevel,
-      personalizedRecommendations: recs,
-      actionItems:     [],
-      nextCheckInDate: new Date(Date.now() + 7 * 86400000),
-    };
-
-    sessionDoc.audioFeatures    = featuresData;
-    // Legacy field kept for backward compat
-    sessionDoc.analysisResults  = { overallRiskLevel: riskLevel, confidence: confScore, timestamp: new Date() };
-    sessionDoc.analysisStatus   = 'completed';
-    sessionDoc.status           = 'completed'; // ← frontend polls this
-    sessionDoc.analyzedAt       = new Date();
-    sessionDoc.audioMetadata    = {
-      ...(sessionDoc.audioMetadata || {}),
-      processingCompletedAt: new Date(),
-      processingStatus:      'completed',
-    };
-    await sessionDoc.save();
+    if (!updateResult) throw new Error(`Session ${sessionId} not found during update`);
+    sessionDoc = updateResult;
     logger.info('Session document updated — wellnessScore:%d riskLevel:%s scorer:%s', wellnessScore, riskLevel, scorerUsed);
 
     job.progress(50);
