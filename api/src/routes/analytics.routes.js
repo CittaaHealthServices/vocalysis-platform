@@ -44,14 +44,8 @@ router.get('/overview', requireAuth, async (req, res) => {
         {
           $group: {
             _id: null,
-            avgScore: {
-              $avg: {
-                $divide: [
-                  { $add: ['$employeeWellnessOutput.overallScore'] },
-                  1
-                ]
-              }
-            }
+            // ✅ Fix: field is wellnessScore not overallScore
+            avgScore: { $avg: '$employeeWellnessOutput.wellnessScore' }
           }
         }
       ])
