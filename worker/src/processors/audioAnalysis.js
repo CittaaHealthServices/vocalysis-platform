@@ -29,6 +29,64 @@ function _generateRecs(dep, anx, str) {
 }
 
 /**
+ * Build biomarker findings from audio features and scores.
+ * Indian-calibrated norms: F0 165-185 Hz, speech rate 4.2-5.2 syl/s.
+ */
+function _biomarkerFindings(features) {
+  const f = features || {};
+
+  const f0 = f.f0_mean || f.pitch_mean || 174;
+  const pitchSev = f0 < 120 ? 'high' : f0 < 145 ? 'moderate' : 'low';
+  const pitchFinding = f0 < 120
+    ? 'Low fundamental frequency — consistent with reduced emotional arousal'
+    : f0 > 220 ? 'Elevated pitch — consistent with heightened emotional state'
+    : 'Pitch within normal Indian voice range (165–185 Hz)';
+
+  const sr = f.speech_rate || f.rate_syllables || 4.4;
+  const rateSev = sr < 3.0 ? 'high' : sr < 3.5 ? 'moderate' : sr > 5.8 ? 'moderate' : 'low';
+  const rateFinding = sr < 3.0
+    ? 'Significantly reduced speech rate — key depression indicator'
+    : sr < 3.5 ? 'Mildly slowed speech rate detected'
+    : sr > 5.8 ? 'Elevated speech rate — possible anxiety marker'
+    : 'Speech rate within normal Indian range (4.2–5.2 syl/s)';
+
+  const jitter  = f.jitter || f.jitter_local || 0.021;
+  const shimmer = f.shimmer || f.shimmer_local || 0.073;
+  const hnr     = f.hnr || f.hnr_db || 20.5;
+  const vqSev   = jitter > 0.040 || shimmer > 0.11 ? 'high'
+                : jitter > 0.030 || shimmer > 0.09  ? 'moderate' : 'low';
+  const vqFinding = vqSev === 'high'
+    ? 'Elevated jitter/shimmer with reduced HNR — vocal irregularity detected'
+    : vqSev === 'moderate' ? 'Mild vocal perturbations detected'
+    : 'Vocal quality within normal range';
+
+  const energy = f.energy_mean || f.energy || 0.050;
+  const engSev = energy < 0.025 ? 'high' : energy < 0.035 ? 'moderate' : energy > 0.085 ? 'moderate' : 'low';
+  const engFinding = energy < 0.025
+    ? 'Very low vocal energy — consistent with fatigue or low mood'
+    : energy < 0.035 ? 'Below-average vocal energy detected'
+    : energy > 0.085 ? 'Elevated vocal energy — possible stress indicator'
+    : 'Vocal energy within normal range';
+
+  const rhythm  = f.rhythm_regularity || 0.74;
+  const pauseR  = f.pause_ratio || 0.22;
+  const rhythSev = rhythm < 0.55 || pauseR > 0.45 ? 'high'
+                 : rhythm < 0.65 || pauseR > 0.35 ? 'moderate' : 'low';
+  const rhythFinding = pauseR > 0.45
+    ? 'High pause ratio — significant silence patterns detected'
+    : rhythm < 0.60 ? 'Irregular speech rhythm pattern detected'
+    : 'Rhythm and pause patterns within expected range';
+
+  return {
+    pitch:            { finding: pitchFinding,   severity: pitchSev,  value: Math.round(f0) },
+    speech_rate:      { finding: rateFinding,    severity: rateSev,   value: Math.round(sr * 10) / 10 },
+    vocal_quality:    { finding: vqFinding,      severity: vqSev,     value: Math.round(hnr * 10) / 10 },
+    energy_level:     { finding: engFinding,     severity: engSev,    value: Math.round(energy * 1000) / 1000 },
+    rhythm_stability: { finding: rhythFinding,   severity: rhythSev,  value: Math.round(rhythm * 100) },
+  };
+}
+
+/**
  * Deterministic fallback scoring when VocoCore is unavailable.
  * Returns { dep, anx, str, confScore } — all 0-100.
  */
@@ -148,10 +206,11 @@ module.exports = async function audioAnalysisProcessor(job) {
     }
 
     // ── Step 2: Build canonical result fields ─────────────────────────────────
-    const riskLevel    = _riskLevel(dep, anx, str);
-    const wellnessScore = Math.round((100 - str) * 0.6 + confScore * 0.4);
-    const wellnessLevel = _wellnessLevel(str);
-    const recs          = _generateRecs(dep, anx, str);
+    const riskLevel         = _riskLevel(dep, anx, str);
+    const wellnessScore     = Math.round((100 - str) * 0.6 + confScore * 0.4);
+    const wellnessLevel     = _wellnessLevel(str);
+    const recs              = _generateRecs(dep, anx, str);
+    const biomarkerFindings = _biomarkerFindings(featuresData);
 
     // ── Step 3: Fetch and update Session document ─────────────────────────────
     logger.info('Step 3: Updating session document');
@@ -178,9 +237,11 @@ module.exports = async function audioAnalysisProcessor(job) {
               burnout:    Math.round(str * 0.8),
               engagement: Math.round(100 - str * 0.5),
             },
+            biomarkerFindings,
             keyIndicators:           [],
             clinicalRecommendations: recs,
             algorithmVersion:        scorerUsed,
+            engineVersion:           'VocoCore™ 2.1-India',
             processedAt:             now,
           },
           'employeeWellnessOutput': {

@@ -1,5 +1,5 @@
 /**
- * /my/* routes Ã¢ÂÂ Employee self-service endpoints
+ * /my/* routes — Employee self-service endpoints
  * All routes require authentication as EMPLOYEE (or any authenticated user accessing their own data)
  */
 const express = require('express');
@@ -18,11 +18,11 @@ router.get('/wellness', requireAuth, async (req, res) => {
     const userId = (req.user.userId || req.user._id).toString();
     const userDoc = await User.findOne({ userId }).select('firstName lastName').lean();
 
-    // Latest sessions for mood trend
-    const recentSessions = await Session.find({ patientId: userId })
+    // Latest completed sessions — use employeeWellnessOutput.wellnessScore (correct stored field)
+    const recentSessions = await Session.find({ patientId: userId, status: 'completed' })
       .sort({ createdAt: -1 })
       .limit(7)
-      .select('vocalysisScore emotionalState createdAt')
+      .select('employeeWellnessOutput vocacoreResults emotionalState createdAt status')
       .lean();
 
     // Upcoming consultations
@@ -36,7 +36,7 @@ router.get('/wellness', requireAuth, async (req, res) => {
       .populate('clinicianId', 'firstName lastName')
       .lean();
 
-    // Streak (consecutive days with a session)
+    // Streak (consecutive days with a completed session)
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     let streak = 0;
@@ -45,12 +45,18 @@ router.get('/wellness', requireAuth, async (req, res) => {
       day.setDate(today.getDate() - i);
       const next = new Date(day);
       next.setDate(day.getDate() + 1);
-      const hasSession = await Session.exists({ patientId: userId, createdAt: { $gte: day, $lt: next } });
+      const hasSession = await Session.exists({ patientId: userId, status: 'completed', createdAt: { $gte: day, $lt: next } });
       if (hasSession) streak++;
       else break;
     }
 
-    const latestScore = recentSessions[0]?.vocalysisScore || null;
+    const latestScore = recentSessions[0]?.employeeWellnessOutput?.wellnessScore ?? null;
+    const prevScore   = recentSessions[1]?.employeeWellnessOutput?.wellnessScore ?? null;
+    const trend = latestScore == null || prevScore == null
+      ? 'stable'
+      : latestScore > prevScore + 3 ? 'improving'
+      : latestScore < prevScore - 3 ? 'declining'
+      : 'stable';
 
     res.json({
       success: true,
@@ -58,11 +64,16 @@ router.get('/wellness', requireAuth, async (req, res) => {
         firstName: userDoc?.firstName || '',
         lastName: userDoc?.lastName || '',
         wellnessScore: latestScore,
+        trend,
         streak,
+        latestDimensionalScores: recentSessions[0]?.vocacoreResults?.dimensionalScores || null,
+        latestRiskLevel: recentSessions[0]?.vocacoreResults?.overallRiskLevel || null,
+        latestWellnessLevel: recentSessions[0]?.employeeWellnessOutput?.wellnessLevel || null,
         recentSessions: recentSessions.map(s => ({
           date: s.createdAt,
-          score: s.vocalysisScore,
-          mood: s.emotionalState,
+          score: s.employeeWellnessOutput?.wellnessScore ?? null,
+          wellnessLevel: s.employeeWellnessOutput?.wellnessLevel ?? null,
+          riskLevel: s.vocacoreResults?.overallRiskLevel ?? null,
         })),
         upcomingConsultations: upcomingConsultations.map(c => ({
           id: c._id,
@@ -95,7 +106,7 @@ router.get('/history', requireAuth, async (req, res) => {
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(Number(limit))
-        .select('vocalysisScore emotionalState duration status createdAt')
+        .select('employeeWellnessOutput vocacoreResults emotionalState duration status createdAt')
         .lean(),
       Session.countDocuments({ patientId: userId }),
     ]);
@@ -105,7 +116,9 @@ router.get('/history', requireAuth, async (req, res) => {
       data: sessions.map(s => ({
         id: s._id,
         date: s.createdAt,
-        score: s.vocalysisScore,
+        score: s.employeeWellnessOutput?.wellnessScore ?? null,
+        wellnessLevel: s.employeeWellnessOutput?.wellnessLevel ?? null,
+        riskLevel: s.vocacoreResults?.overallRiskLevel ?? null,
         mood: s.emotionalState,
         duration: s.duration,
         status: s.status,

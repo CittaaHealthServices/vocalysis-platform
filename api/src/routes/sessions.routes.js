@@ -505,12 +505,23 @@ router.get('/:id', requireAuth, async (req, res) => {
     const responseData = { session };
 
     if (userRole === 'EMPLOYEE') {
-      // Employees only see wellness output
+      // Employees see wellness output + anonymised vocacoreResults (no raw audio/clinical notes)
       responseData.session = {
         id: session._id,
         status: session.status,
         createdAt: session.createdAt,
-        employeeWellnessOutput: session.employeeWellnessOutput
+        employeeWellnessOutput: session.employeeWellnessOutput,
+        vocacoreResults: session.vocacoreResults
+          ? {
+              overallRiskLevel:   session.vocacoreResults.overallRiskLevel,
+              riskScore:          session.vocacoreResults.riskScore,
+              confidence:         session.vocacoreResults.confidence,
+              dimensionalScores:  session.vocacoreResults.dimensionalScores,
+              biomarkerFindings:  session.vocacoreResults.biomarkerFindings,
+              algorithmVersion:   session.vocacoreResults.algorithmVersion,
+              engineVersion:      session.vocacoreResults.engineVersion,
+            }
+          : null,
       };
     }
     // Clinical roles see full data
