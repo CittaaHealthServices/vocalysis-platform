@@ -5,6 +5,7 @@ const sessionSchema = new mongoose.Schema({
   tenantId: { type: String, required: true },
   patientId: { type: String },
   clinicianId: { type: String },
+  employeeId: { type: String },
   // status field kept flexible so the worker can mark sessions failed
   status: { type: String },
   audioDeletedAt: Date,
@@ -17,8 +18,21 @@ const sessionSchema = new mongoose.Schema({
   reportGeneratedAt: Date,
   reportGeneratedBy: String,
   createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now }
-});
+  updatedAt: { type: Date, default: Date.now },
+
+  // ✅ Fix: fields populated by audioAnalysis.js worker — must be declared or Mongoose drops them
+  vocacoreResults: mongoose.Schema.Types.Mixed,
+  employeeWellnessOutput: {
+    wellnessScore:               { type: Number },
+    wellnessLevel:               { type: String },
+    personalizedRecommendations: [String],
+    actionItems:                 [String],
+    resourcesRecommended:        [String],
+    selfHelpMaterials:           [String],
+  },
+  audioFeatures: mongoose.Schema.Types.Mixed,
+  audioMetadata: mongoose.Schema.Types.Mixed,
+}, { strict: false }); // allow extra ad-hoc fields written by worker without schema collision
 
 sessionSchema.index({ tenantId: 1, createdAt: -1 });
 sessionSchema.index({ patientId: 1 });
