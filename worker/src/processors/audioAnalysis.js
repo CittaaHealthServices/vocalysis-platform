@@ -334,6 +334,26 @@ module.exports = async function audioAnalysisProcessor(job) {
       logger.warn('Employee profile update failed (non-fatal): %s', profileErr.message);
     }
 
+    // ── Step 7: Notify VocoCore of completed session ──────────────────────────
+    // This increments the session counter inside VocoCore and triggers an
+    // ElevenLabs auto-retrain once every RETRAIN_SESSION_COUNT sessions (default 50).
+    // Fire-and-forget — we do NOT await so the job completes instantly.
+    if (vococoreUrl) {
+      axios.post(`${vococoreUrl}/session-trained`, {}, {
+        headers: { 'X-VocoCore-Internal-Key': internalKey },
+        timeout: 5000,
+      }).then(res => {
+        const d = res.data || {};
+        if (d.retrain_triggered) {
+          logger.info('[session-trained] retrain threshold reached — auto-retrain triggered (total=%d)', d.counters?.total_sessions);
+        } else {
+          logger.info('[session-trained] counter updated (since_last=%d / threshold=%d)', d.counters?.sessions_since_last_retrain, d.counters?.threshold);
+        }
+      }).catch(err => {
+        logger.warn('[session-trained] ping failed (non-fatal): %s', err.message);
+      });
+    }
+
     job.progress(100);
     logger.info('Audio analysis completed for session %s', sessionId);
 

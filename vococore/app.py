@@ -180,6 +180,35 @@ def create_app():
                 'message': 'Internal server error during scoring'
             }}), 500
 
+    @app.route('/session-trained', methods=['POST'])
+    @require_internal_auth
+    def session_trained():
+        """
+        Called by the API worker after each successful employee check-in.
+        Increments session counter and triggers auto-retrain when threshold is met.
+        Fire-and-forget — worker does NOT wait for retrain to complete.
+        """
+        from auto_retrain import increment_session_counter, trigger_now, get_session_counter
+        should_retrain = increment_session_counter()
+        counters = get_session_counter()
+        if should_retrain:
+            triggered, msg = trigger_now(trigger='session_count')
+            logger.info(
+                '[session-trained] threshold hit (%d sessions) — retrain triggered=%s',
+                counters['total_sessions'], triggered
+            )
+            return jsonify({
+                'success': True,
+                'retrain_triggered': triggered,
+                'message': msg,
+                'counters': counters,
+            }), 200
+        return jsonify({
+            'success': True,
+            'retrain_triggered': False,
+            'counters': counters,
+        }), 200
+
     @app.route('/retrain', methods=['POST'])
     @require_internal_auth
     def retrain():
