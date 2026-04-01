@@ -207,8 +207,12 @@ export const WellnessCheckIn = () => {
   useEffect(() => {
     if (completed && currentStep === 2) {
       const s = pollData?.data?.session || pollData?.session
-      setSessionData(s)
-      setCurrentStep(3)
+      if (s?.status === 'failed') {
+        setCurrentStep(4) // error state
+      } else {
+        setSessionData(s)
+        setCurrentStep(3)
+      }
     }
   }, [completed]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -569,6 +573,47 @@ export const WellnessCheckIn = () => {
                 </Button>
               )}
             </motion.div>
+          </motion.div>
+        )}
+
+        {/* ── Step 5: Analysis Failed ───────────────────────────────────────── */}
+        {currentStep === 4 && (
+          <motion.div key="failed" variants={pageVariants} initial="hidden" animate="show" exit="exit">
+            <Card className="p-12 text-center">
+              <motion.div
+                initial={{ scale: 0.6, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ type: 'spring', stiffness: 200, damping: 16 }}
+                className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-amber-100 mb-6"
+              >
+                <AlertTriangle className="w-8 h-8 text-amber-600" />
+              </motion.div>
+              <h2 className="text-2xl font-bold text-app mb-3">Analysis Couldn't Complete</h2>
+              <p className="text-gray-500 mb-2 max-w-md mx-auto">
+                Our AI couldn't process this recording — this can happen if the audio was too short, very noisy,
+                or the microphone cut out unexpectedly.
+              </p>
+              <p className="text-gray-400 text-sm mb-8">Your data was not saved. You can try again right away.</p>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <Button
+                  onClick={() => { setCurrentStep(1); setSessionId(null) }}
+                  className="bg-cittaa-700 hover:bg-cittaa-800 text-white px-6 py-2.5 rounded-xl flex items-center gap-2 justify-center"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Try Again
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setCurrentStep(0)}
+                  className="border-gray-200 text-gray-600 hover:bg-gray-50 px-6 py-2.5 rounded-xl"
+                >
+                  Back to Start
+                </Button>
+              </div>
+              <p className="text-xs text-gray-400 mt-6">
+                Tips: speak clearly for at least 30 seconds, reduce background noise, and stay close to your microphone.
+              </p>
+            </Card>
           </motion.div>
         )}
 

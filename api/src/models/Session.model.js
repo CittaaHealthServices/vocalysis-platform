@@ -115,6 +115,15 @@ const sessionSchema = new mongoose.Schema(
       },
       timestamps: Date,
     },
+    // Analysis lifecycle fields (written by worker, read by API + frontend)
+    analysisStatus: {
+      type: String,
+      enum: ['pending', 'in-progress', 'completed', 'failed'],
+      default: 'pending',
+    },
+    analyzedAt: Date,
+    analysisResults: { type: mongoose.Schema.Types.Mixed }, // legacy field
+
     vocacoreResults: {
       overallRiskLevel: {
         type: String,
@@ -133,15 +142,55 @@ const sessionSchema = new mongoose.Schema(
       },
       dimensionalScores: {
         depression: Number,
-        anxiety: Number,
-        stress: Number,
-        burnout: Number,
+        anxiety:    Number,
+        stress:     Number,
+        burnout:    Number,
         engagement: Number,
       },
-      keyIndicators: [String],
+      // Biomarker findings — 5 acoustic dimensions with clinical interpretation
+      // Written by worker audioAnalysis.js, returned to employee-facing UI
+      biomarkerFindings: {
+        pitch: {
+          finding:  String,
+          severity: { type: String, enum: ['low', 'moderate', 'high'] },
+          value:    Number,
+          unit:     String,
+          norm:     String,
+        },
+        speech_rate: {
+          finding:  String,
+          severity: { type: String, enum: ['low', 'moderate', 'high'] },
+          value:    Number,
+          unit:     String,
+          norm:     String,
+        },
+        vocal_quality: {
+          finding:  String,
+          severity: { type: String, enum: ['low', 'moderate', 'high'] },
+          value:    Number,
+          unit:     String,
+          norm:     String,
+        },
+        energy_level: {
+          finding:  String,
+          severity: { type: String, enum: ['low', 'moderate', 'high'] },
+          value:    Number,
+          unit:     String,
+          norm:     String,
+        },
+        rhythm_stability: {
+          finding:  String,
+          severity: { type: String, enum: ['low', 'moderate', 'high'] },
+          value:    Number,
+          unit:     String,
+          norm:     String,
+        },
+      },
+      keyIndicators:           [String],
       clinicalRecommendations: [String],
-      algorithmVersion: String,
-      processedAt: Date,
+      algorithmVersion:        String,
+      engineVersion:           String,  // e.g. 'VocoCore™ 2.1-India'
+      processedAt:             Date,
     },
     clinicianInputs: {
       clinicianNotes: String,
