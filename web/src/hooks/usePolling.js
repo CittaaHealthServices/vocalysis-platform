@@ -16,6 +16,12 @@ export const usePolling = (pollFn, condition, interval = 3000, maxDuration = 600
   const [progress, setProgress]     = useState(0)
   const intervalRef                 = useRef(null)
 
+  // Always keep refs up-to-date so the setInterval callback is never stale
+  const pollFnRef   = useRef(pollFn)
+  const conditionRef = useRef(condition)
+  useEffect(() => { pollFnRef.current   = pollFn   }, [pollFn])
+  useEffect(() => { conditionRef.current = condition }, [condition])
+
   const stopPolling = useCallback(() => {
     if (intervalRef.current) {
       clearInterval(intervalRef.current)
@@ -36,13 +42,13 @@ export const usePolling = (pollFn, condition, interval = 3000, maxDuration = 600
 
     intervalRef.current = setInterval(async () => {
       try {
-        const result = await pollFn()
+        const result = await pollFnRef.current()
         setData(result)
 
         const elapsed = Date.now() - startTime
         setProgress(Math.min((elapsed / maxDuration) * 100, 95))
 
-        if (condition(result)) {
+        if (conditionRef.current(result)) {
           setCompleted(true)
           setProgress(100)
           stopPolling()

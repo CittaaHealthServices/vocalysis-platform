@@ -63,6 +63,13 @@ export const WellnessCheckIn = () => {
     3000
   )
 
+  // Start polling only AFTER sessionId is committed to state (avoids stale closure)
+  useEffect(() => {
+    if (sessionId) {
+      startPolling()
+    }
+  }, [sessionId]) // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (completed && currentStep === 2) {
       const s = pollData?.data?.session || pollData?.session
@@ -88,9 +95,8 @@ export const WellnessCheckIn = () => {
       const response = await api.post('/sessions', formData)
       const newSessionId = response?.session?.id || response?.session?._id
       if (!newSessionId) throw new Error('No session ID returned')
-      setSessionId(newSessionId)
       if (response?.dailyProgress) setDailyProgress(response.dailyProgress)
-      startPolling()
+      setSessionId(newSessionId) // triggers useEffect → startPolling with correct ID
     } catch (error) {
       const msg = error.response?.data?.error || 'Failed to process check-in'
       toast.error(msg)
