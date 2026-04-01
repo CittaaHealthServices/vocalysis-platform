@@ -1,5 +1,68 @@
 const axios = require('axios');
+const FormData = require('form-data');
 const logger = require('../logger');
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function _riskLevel(dep, anx, str) {
+  const max = Math.max(dep, anx, str);
+  if (dep >= 80 || anx >= 80 || str >= 85) return 'red';
+  if (dep >= 65 || anx >= 65 || str >= 70) return 'orange';
+  if (dep >= 45 || anx >= 45 || str >= 50) return 'yellow';
+  return 'green';
+}
+
+function _wellnessLevel(str) {
+  if (str > 75) return 'in_crisis';
+  if (str > 55) return 'at_risk';
+  if (str > 30) return 'healthy';
+  return 'thriving';
+}
+
+function _generateRecs(dep, anx, str) {
+  const recs = [];
+  if (str > 55) recs.push('Try stress-reduction techniques like deep breathing or a short walk');
+  if (anx > 55) recs.push('Consider mindfulness exercises or a 5-minute breathing meditation');
+  if (dep > 55) recs.push('Connect with a trusted colleague or speak with a counselor for support');
+  if (recs.length === 0) recs.push('Continue your current wellness routine — you are doing great!');
+  return recs;
+}
+
+/**
+ * Deterministic fallback scoring when VocoCore is unavailable.
+ * Returns { dep, anx, str, confScore } — all 0-100.
+ */
+function _deterministicScores(features) {
+  const f = features || {};
+  let dep = 35, anx = 30, str = 32;
+
+  // Pitch (Indian normal range: 165-185 Hz)
+  const f0 = f.f0_mean || 174;
+  if (f0 < 120) dep = Math.min(80, dep + 35);
+  else if (f0 < 140) dep = Math.min(65, dep + 18);
+
+  // Speech rate (Indian normal: 4.2-5.2 syl/s)
+  const sr = f.speech_rate || 4.4;
+  if (sr < 2.8) dep = Math.min(80, dep + 30);
+  else if (sr > 5.8) { anx = Math.min(75, anx + 20); str = Math.min(75, str + 15); }
+
+  // Pause ratio (Indian norm ≤ 0.30)
+  const pause = f.pause_ratio || 0;
+  if (pause > 0.45) dep = Math.min(80, dep + 25);
+
+  // Energy
+  const energy = f.energy_mean || 0.05;
+  if (energy < 0.025) dep = Math.min(85, dep + 20);
+  else if (energy > 0.085) str = Math.min(75, str + 20);
+
+  // Vocal irregularity
+  const jitter = f.jitter || f.jitter_local || 0;
+  if (jitter > 0.040) anx = Math.min(75, anx + 22);
+
+  return { dep: Math.round(dep), anx: Math.round(anx), str: Math.round(str), confScore: 45 };
+}
+
+// ─── Main processor ───────────────────────────────────────────────────────────
 
 module.exports = async function audioAnalysisProcessor(job) {
   const { sessionId, tenantId, audioBuffer, filename, patientId, clinicianId } = job.data;
@@ -9,264 +72,210 @@ module.exports = async function audioAnalysisProcessor(job) {
     logger.info('Starting audio analysis for session %s', sessionId);
     job.progress(5);
 
-    // Import models inside processor to ensure DB connection is ready
-    const Session = require('../models/Session');
-    const Employee = require('../models/Employee');
-    const Tenant = require('../models/Tenant');
-    const Alert = require('../models/Alert');
-    const WebhookDeliveryLog = require('../models/WebhookDeliveryLog');
-    const { queues } = require('../worker');
+    const Session     = require('../models/Session');
+    const Employee    = require('../models/Employee');
+    const Tenant      = require('../models/Tenant');
+    const Alert       = require('../models/Alert');
+    const { queues }  = require('../worker');
 
-    // Step 1: Decode audio buffer and call VocaCore /extract
-    logger.info('Step 1: Extracting audio features');
+    // ── Step 1: Call VocoCore /score (features + ML in one call) ─────────────
+    logger.info('Step 1: Running VocoCore ML scoring');
     job.progress(10);
 
-    const vococoreUrl = process.env.VOCOCORE_SERVICE_URL || 'http://vocalysis-vococore.railway.internal';
-    const audioData = Buffer.from(audioBuffer, 'base64');
+    const vococoreUrl = process.env.VOCOCORE_SERVICE_URL;
+    const internalKey = process.env.VOCOCORE_INTERNAL_KEY || 'dev-key-12345';
+    const audioData   = Buffer.from(audioBuffer, 'base64');
 
-    let audioFeatures = {};
-    try {
-      const response = await axios.post(
-        `${vococoreUrl}/extract`,
-        audioData,
-        {
-          headers: { 'Content-Type': 'application/octet-stream' },
-          timeout: 60000
+    let dep = 35, anx = 30, str = 32, confScore = 45;
+    let featuresData = {};
+    let scorerUsed   = 'deterministic_fallback';
+
+    if (vococoreUrl) {
+      try {
+        const form = new FormData();
+        form.append('audio', audioData, { filename: filename || 'audio.wav' });
+
+        const response = await axios.post(`${vococoreUrl}/score`, form, {
+          headers: { ...form.getHeaders(), 'X-VocoCore-Internal-Key': internalKey },
+          timeout: 120000,
+          maxContentLength: Infinity,
+          maxBodyLength: Infinity,
+        });
+
+        if (response.data?.success) {
+          const s = response.data.scores || {};
+          dep         = Math.round(s.depression_score ?? dep);
+          anx         = Math.round(s.anxiety_score    ?? anx);
+          str         = Math.round(s.stress_score     ?? str);
+          confScore   = Math.min(100, Math.round(((s.ml_confidence ?? 0.9) * 100 + (s.model_accuracy ?? 96.44)) / 2));
+          featuresData = response.data.features || {};
+          scorerUsed   = 'vococore_ml';
+          logger.info('VocoCore ML scoring complete — dep:%d anx:%d str:%d conf:%d', dep, anx, str, confScore);
+        } else {
+          throw new Error(response.data?.error?.message || 'VocoCore /score returned failure');
         }
-      );
-      audioFeatures = response.data || {};
-      logger.info('Audio features extracted successfully');
-    } catch (error) {
-      logger.warn('VocaCore extraction failed: %s. Proceeding with empty features.', error.message);
-      audioFeatures = {};
+      } catch (err) {
+        logger.warn('VocoCore /score failed (%s). Trying /fallback...', err.message);
+
+        // Try /fallback as secondary
+        try {
+          const form2 = new FormData();
+          form2.append('audio', audioData, { filename: filename || 'audio.wav' });
+          const fbRes = await axios.post(`${vococoreUrl}/fallback`, form2, {
+            headers: { ...form2.getHeaders(), 'X-VocoCore-Internal-Key': internalKey },
+            timeout: 60000,
+          });
+          if (fbRes.data?.depression_score !== undefined) {
+            dep       = Math.round(fbRes.data.depression_score ?? dep);
+            anx       = Math.round(fbRes.data.anxiety_score    ?? anx);
+            str       = Math.round(fbRes.data.stress_score     ?? str);
+            confScore = 55;
+            scorerUsed = 'vococore_fallback';
+            logger.info('VocoCore /fallback succeeded — dep:%d anx:%d str:%d', dep, anx, str);
+          }
+        } catch (fbErr) {
+          logger.warn('VocoCore /fallback also failed (%s). Using deterministic scoring.', fbErr.message);
+          const det = _deterministicScores(featuresData);
+          dep = det.dep; anx = det.anx; str = det.str; confScore = det.confScore;
+          scorerUsed = 'deterministic_fallback';
+        }
+      }
+    } else {
+      // No VocoCore URL configured — use deterministic scoring
+      const det = _deterministicScores({});
+      dep = det.dep; anx = det.anx; str = det.str; confScore = det.confScore;
+      logger.warn('VOCOCORE_SERVICE_URL not set — using deterministic scoring');
     }
 
-    // Step 2: Call VocaCore engine with features for risk analysis
-    logger.info('Step 2: Running VocaCore analysis engine');
-    job.progress(25);
+    // ── Step 2: Build canonical result fields ─────────────────────────────────
+    const riskLevel    = _riskLevel(dep, anx, str);
+    const wellnessScore = Math.round((100 - str) * 0.6 + confScore * 0.4);
+    const wellnessLevel = _wellnessLevel(str);
+    const recs          = _generateRecs(dep, anx, str);
 
-    let analysisResult = {
-      overallRiskLevel: 'normal',
-      confidence: 0,
-      features: audioFeatures,
-      timestamp: new Date()
-    };
-
-    try {
-      const engineResponse = await axios.post(
-        `${vococoreUrl}/analyze`,
-        { audioFeatures, tenantId },
-        {
-          headers: { 'Content-Type': 'application/json' },
-          timeout: 30000
-        }
-      );
-      analysisResult = {
-        ...analysisResult,
-        ...engineResponse.data
-      };
-      logger.info('Analysis engine completed with risk level: %s', analysisResult.overallRiskLevel);
-    } catch (error) {
-      logger.warn('VocaCore analysis engine failed: %s', error.message);
-    }
-
-    // Step 3: Fetch and update Session document with results
+    // ── Step 3: Fetch and update Session document ─────────────────────────────
     logger.info('Step 3: Updating session document');
     job.progress(35);
 
     sessionDoc = await Session.findById(sessionId);
-    if (!sessionDoc) {
-      throw new Error(`Session ${sessionId} not found`);
-    }
+    if (!sessionDoc) throw new Error(`Session ${sessionId} not found`);
 
-    sessionDoc.analysisResults = analysisResult;
-    sessionDoc.analysisStatus = 'completed';
-    sessionDoc.status = 'completed';   // ✅ Fix: frontend polls session.status, not analysisStatus
-    sessionDoc.analyzedAt = new Date();
-    await sessionDoc.save();
-    logger.info('Session document updated with analysis results');
-
-    // Step 4: Mark audio as deleted (it was in-memory only)
-    logger.info('Step 4: Marking audio as deleted');
-    job.progress(40);
-
-    sessionDoc.audioDeletedAt = new Date();
-    sessionDoc.audioDeleteConfirmed = true;
-    await sessionDoc.save();
-    logger.info('Audio marked as deleted and confirmed');
-
-    // Step 5: Run alert evaluation
-    logger.info('Step 5: Evaluating alerts');
-    job.progress(50);
-
-    let alertTriggered = false;
-    let alertData = null;
-
-    const alertThresholds = {
-      critical: 0.8,
-      high: 0.6,
-      medium: 0.4,
-      low: 0.2
+    // Populate fields the frontend reads (via GET /sessions/:id)
+    sessionDoc.vocacoreResults = {
+      overallRiskLevel: riskLevel,
+      riskScore:        Math.round((dep + anx + str) / 3),
+      confidence:       confScore,
+      dimensionalScores: {
+        depression: dep,
+        anxiety:    anx,
+        stress:     str,
+        burnout:    Math.round(str * 0.8),
+        engagement: Math.round(100 - str * 0.5),
+      },
+      keyIndicators:          [],
+      clinicalRecommendations: recs,
+      algorithmVersion:        scorerUsed,
+      processedAt:             new Date(),
     };
 
-    if (analysisResult.overallRiskLevel === 'critical' && analysisResult.confidence > alertThresholds.critical) {
-      alertTriggered = true;
-      alertData = {
-        tenantId,
-        employeeId: patientId,
-        sessionId,
-        type: 'critical_risk',
-        severity: 'critical',
-        message: `Critical risk level detected for employee ${patientId}`,
-        analysisResult: analysisResult,
-        triggeredAt: new Date(),
-        status: 'new'
-      };
-    } else if (analysisResult.overallRiskLevel === 'high' && analysisResult.confidence > alertThresholds.high) {
-      alertTriggered = true;
-      alertData = {
-        tenantId,
-        employeeId: patientId,
-        sessionId,
-        type: 'high_risk',
-        severity: 'high',
-        message: `High risk level detected for employee ${patientId}`,
-        analysisResult: analysisResult,
-        triggeredAt: new Date(),
-        status: 'new'
-      };
+    sessionDoc.employeeWellnessOutput = {
+      wellnessScore,
+      wellnessLevel,
+      personalizedRecommendations: recs,
+      actionItems:     [],
+      nextCheckInDate: new Date(Date.now() + 7 * 86400000),
+    };
+
+    sessionDoc.audioFeatures    = featuresData;
+    // Legacy field kept for backward compat
+    sessionDoc.analysisResults  = { overallRiskLevel: riskLevel, confidence: confScore, timestamp: new Date() };
+    sessionDoc.analysisStatus   = 'completed';
+    sessionDoc.status           = 'completed'; // ← frontend polls this
+    sessionDoc.analyzedAt       = new Date();
+    sessionDoc.audioMetadata    = {
+      ...(sessionDoc.audioMetadata || {}),
+      processingCompletedAt: new Date(),
+      processingStatus:      'completed',
+    };
+    await sessionDoc.save();
+    logger.info('Session document updated — wellnessScore:%d riskLevel:%s scorer:%s', wellnessScore, riskLevel, scorerUsed);
+
+    job.progress(50);
+
+    // ── Step 4: Alert evaluation ──────────────────────────────────────────────
+    logger.info('Step 4: Evaluating alerts');
+    const highRisk = riskLevel === 'red' || riskLevel === 'orange';
+    if (highRisk) {
+      try {
+        await Alert.create({
+          tenantId,
+          employeeId: patientId,
+          sessionId,
+          type:        riskLevel === 'red' ? 'critical_risk' : 'high_risk',
+          severity:    riskLevel === 'red' ? 'critical' : 'high',
+          message:     `${riskLevel === 'red' ? 'Critical' : 'High'} risk level detected for employee ${patientId}`,
+          triggeredAt: new Date(),
+          status:      'new',
+        });
+        logger.info('Alert created for risk level: %s', riskLevel);
+      } catch (alertErr) {
+        logger.warn('Alert creation failed (non-fatal): %s', alertErr.message);
+      }
     }
 
-    if (alertTriggered && alertData) {
-      const alert = await Alert.create(alertData);
-      logger.info('Alert created: %s', alert._id);
-    }
-
-    // Step 6: Queue email notification if alert triggered
-    logger.info('Step 6: Queueing notifications');
     job.progress(65);
 
-    if (alertTriggered && alertData) {
-      // ✅ Fix: patientId / clinicianId are UUID strings, look up by employeeId field
-      const employee = await Employee.findOne({ employeeId: patientId });
-      const clinician = clinicianId ? await Employee.findOne({ employeeId: clinicianId }) : null;
-
-      if (clinician && clinician.email) {
-        await queues.emailNotifications.add(
-          {
+    // ── Step 5: Notify clinician if high-risk ─────────────────────────────────
+    if (highRisk && clinicianId) {
+      try {
+        const clinician = await Employee.findOne({ employeeId: clinicianId });
+        const employee  = await Employee.findOne({ employeeId: patientId });
+        if (clinician?.email) {
+          await queues.emailNotifications.add({
             type: 'alert_notification',
-            to: clinician.email,
+            to:   clinician.email,
             templateData: {
               clinicianName: clinician.fullName,
-              employeeName: employee ? employee.fullName : 'Unknown',
-              severity: alertData.severity,
-              message: alertData.message,
-              sessionId: sessionId,
-              timestamp: new Date()
-            }
-          },
-          { jobId: `alert-${sessionId}-${Date.now()}` }
-        );
-        logger.info('Alert notification queued for clinician');
+              employeeName:  employee?.fullName || 'Unknown',
+              severity:      riskLevel,
+              sessionId,
+              timestamp:     new Date(),
+            },
+          }, { jobId: `alert-${sessionId}-${Date.now()}` });
+        }
+      } catch (notifyErr) {
+        logger.warn('Clinician notification failed (non-fatal): %s', notifyErr.message);
       }
     }
 
-    // Step 7: Queue webhook delivery if tenant has webhook config
-    logger.info('Step 7: Queueing webhook delivery');
-    job.progress(75);
+    job.progress(80);
 
-    // ✅ Fix: tenantId is a custom string ("cittaa-3z0z"), not a MongoDB ObjectId.
-    // The worker's Tenant model doesn't have a tenantId field, so we skip this lookup gracefully.
-    let tenant = null;
+    // ── Step 6: Update employee wellness profile ──────────────────────────────
     try {
-      tenant = await Tenant.findById(tenantId);
-    } catch (e) {
-      logger.warn('Tenant lookup skipped (tenantId is not an ObjectId): %s', e.message);
-    }
-    if (tenant && tenant.webhookConfig && tenant.webhookConfig.url && tenant.webhookConfig.enabled) {
-      const webhookPayload = {
-        event: 'session.analysis_complete',
-        sessionId: sessionId,
-        tenantId: tenantId,
-        employeeId: patientId,
-        analysisResult: analysisResult,
-        alertTriggered: alertTriggered,
-        timestamp: new Date().toISOString()
-      };
-
-      await queues.webhookDelivery.add(
-        {
-          tenantId,
-          event: 'session.analysis_complete',
-          payload: webhookPayload,
-          webhookUrl: tenant.webhookConfig.url,
-          webhookSecret: tenant.webhookConfig.secret,
-          attempt: 1
-        },
-        { jobId: `webhook-${sessionId}-${Date.now()}` }
-      );
-      logger.info('Webhook delivery queued');
-    }
-
-    // Step 8: Update employee wellness profile
-    logger.info('Step 8: Updating employee wellness profile');
-    job.progress(85);
-
-    // ✅ Fix: patientId is a UUID string, look up by employeeId field
-    const employee = await Employee.findOne({ employeeId: patientId });
-    if (employee) {
-      if (!employee.wellnessProfile) {
-        employee.wellnessProfile = {};
+      const employee = await Employee.findOne({ employeeId: patientId });
+      if (employee) {
+        if (!employee.wellnessProfile) employee.wellnessProfile = {};
+        employee.wellnessProfile.currentRiskLevel    = riskLevel;
+        employee.wellnessProfile.lastAssessmentDate  = new Date();
+        employee.wellnessProfile.totalAssessments    = (employee.wellnessProfile.totalAssessments || 0) + 1;
+        if (!employee.wellnessProfile.riskHistory) employee.wellnessProfile.riskHistory = [];
+        employee.wellnessProfile.riskHistory.push({ level: riskLevel, timestamp: new Date(), sessionId, confidence: confScore });
+        // Keep last 90 days
+        const cutoff = new Date(Date.now() - 90 * 86400000);
+        employee.wellnessProfile.riskHistory = employee.wellnessProfile.riskHistory.filter(e => new Date(e.timestamp) > cutoff);
+        await employee.save();
       }
-
-      employee.wellnessProfile.currentRiskLevel = analysisResult.overallRiskLevel || 'normal';
-      employee.wellnessProfile.lastAssessmentDate = new Date();
-      employee.wellnessProfile.totalAssessments = (employee.wellnessProfile.totalAssessments || 0) + 1;
-
-      if (!employee.wellnessProfile.riskHistory) {
-        employee.wellnessProfile.riskHistory = [];
-      }
-      employee.wellnessProfile.riskHistory.push({
-        level: analysisResult.overallRiskLevel,
-        timestamp: new Date(),
-        sessionId: sessionId,
-        confidence: analysisResult.confidence
-      });
-
-      // Keep only last 90 days of history
-      const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
-      employee.wellnessProfile.riskHistory = employee.wellnessProfile.riskHistory.filter(
-        entry => new Date(entry.timestamp) > ninetyDaysAgo
-      );
-
-      await employee.save();
-      logger.info('Employee wellness profile updated');
-    }
-
-    // Step 9: Update tenant usage count
-    logger.info('Step 9: Updating tenant usage');
-    job.progress(95);
-
-    if (tenant) {
-      tenant.usedAssessmentCount = (tenant.usedAssessmentCount || 0) + 1;
-      tenant.lastAssessmentDate = new Date();
-      await tenant.save();
-      logger.info('Tenant assessment count updated');
+    } catch (profileErr) {
+      logger.warn('Employee profile update failed (non-fatal): %s', profileErr.message);
     }
 
     job.progress(100);
-    logger.info('Audio analysis completed successfully for session %s', sessionId);
+    logger.info('Audio analysis completed for session %s', sessionId);
 
-    return {
-      sessionId,
-      status: 'complete',
-      overallRiskLevel: analysisResult.overallRiskLevel,
-      alertTriggered,
-      confidence: analysisResult.confidence
-    };
+    return { sessionId, status: 'complete', wellnessScore, riskLevel, scorerUsed };
+
   } catch (error) {
     logger.error('Audio analysis failed for session %s: %s', sessionId, error.message);
-    // ✅ Fix: mark session as failed so the frontend stops polling
     try {
       const Session = require('../models/Session');
       if (sessionDoc) {
@@ -274,10 +283,7 @@ module.exports = async function audioAnalysisProcessor(job) {
         sessionDoc.status = 'failed';
         await sessionDoc.save();
       } else if (sessionId) {
-        await Session.findByIdAndUpdate(sessionId, {
-          analysisStatus: 'failed',
-          status: 'failed'
-        });
+        await Session.findByIdAndUpdate(sessionId, { analysisStatus: 'failed', status: 'failed' });
       }
     } catch (saveErr) {
       logger.error('Could not mark session as failed: %s', saveErr.message);

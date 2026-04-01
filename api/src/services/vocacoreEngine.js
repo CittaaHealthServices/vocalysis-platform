@@ -3,7 +3,7 @@
  * =========================================
  * Primary:  Indian-calibrated sklearn ML model via VocoCore /score endpoint
  *           (96.44% accuracy, Hindi/Telugu/Tamil/Kannada/IndEng calibration)
- * Fallback: Gemini 1.5 Pro via VOCOCORE_INFERENCE_KEY (if Python service down)
+ * Fallback: Gemini 2.5 Flash via VOCOCORE_INFERENCE_KEY (if Python service down)
  * Final:    Deterministic rule-based scoring (if both above fail)
  *
  * The /score endpoint does feature extraction + ML inference in one call.
@@ -190,7 +190,7 @@ class VocaCoreEngine {
     if (process.env.VOCOCORE_INFERENCE_KEY) {
       try {
         const genAI = new GoogleGenerativeAI(process.env.VOCOCORE_INFERENCE_KEY);
-        this._gemini = genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
+        this._gemini = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
       } catch (_) {
         this._gemini = null;
       }

@@ -146,3 +146,95 @@ body {
     @apply text-base;
   }
 }
+
+/* ─── Animated gradient backgrounds ─────────────────────────────────────── */
+.animated-gradient-bg {
+  background: linear-gradient(-45deg, #faf5ff, #f3e8ff, #e0f2fe, #f0fdf4, #faf5ff);
+  background-size: 400% 400%;
+  animation: gradientShift 18s ease infinite;
+}
+
+@keyframes gradientShift {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* ─── Card entrance animations ───────────────────────────────────────────── */
+.fade-in-up       { animation: fadeInUp 0.55s ease-out both; }
+.fade-in-up-1     { animation: fadeInUp 0.55s ease-out 0.10s both; }
+.fade-in-up-2     { animation: fadeInUp 0.55s ease-out 0.20s both; }
+.fade-in-up-3     { animation: fadeInUp 0.55s ease-out 0.30s both; }
+.fade-in-up-4     { animation: fadeInUp 0.55s ease-out 0.40s both; }
+.fade-in-up-5     { animation: fadeInUp 0.55s ease-out 0.50s both; }
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── Floating orb animation ─────────────────────────────────────────────── */
+@keyframes orbFloat {
+  0%, 100% { transform: translate(0px,   0px)  scale(1);    }
+  33%      { transform: translate(18px, -28px) scale(1.08); }
+  66%      { transform: translate(-14px, 14px) scale(0.96); }
+}
+.orb-1 { animation: orbFloat 9s  ease-in-out infinite; }
+.orb-2 { animation: orbFloat 11s ease-in-out infinite reverse; }
+.orb-3 { animation: orbFloat 13s ease-in-out infinite 3s; }
+
+/* ─── Glow pulse ─────────────────────────────────────────────────────────── */
+@keyframes glowPulse {
+  0%, 100% { box-shadow: 0 0  0  0 rgba(107, 33, 168, 0.00); }
+  50%      { box-shadow: 0 0 24px 5px rgba(107, 33, 168, 0.14); }
+}
+.glow-pulse { animation: glowPulse 3s ease-in-out infinite; }
+
+/* ─── Card hover lift ────────────────────────────────────────────────────── */
+.card-hover-lift {
+  transition: transform 0.22s ease, box-shadow 0.22s ease;
+}
+.card-hover-lift:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 14px 36px rgba(107, 33, 168, 0.12);
+}
+
+/* ─── Shimmer on loading ─────────────────────────────────────────────────── */
+@keyframes shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+.shimmer-bar {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(90deg, #f3e8ff 0%, #e9d5ff 50%, #f3e8ff 100%);
+  background-size: 200% 100%;
+  animation: shimmerBg 1.8s ease-in-out infinite;
+}
+@keyframes shimmerBg {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ─── Waveform bars (recording) ──────────────────────────────────────────── */
+@keyframes waveBar {
+  0%, 100% { transform: scaleY(0.25); opacity: 0.5; }
+  50%      { transform: scaleY(1.00); opacity: 1.0; }
+}
+.wave-bar { animation: waveBar 0.9s ease-in-out infinite; transform-origin: bottom; }
+.wave-bar:nth-child(1)  { animation-delay: 0.00s; }
+.wave-bar:nth-child(2)  { animation-delay: 0.10s; }
+.wave-bar:nth-child(3)  { animation-delay: 0.20s; }
+.wave-bar:nth-child(4)  { animation-delay: 0.30s; }
+.wave-bar:nth-child(5)  { animation-delay: 0.40s; }
+.wave-bar:nth-child(6)  { animation-delay: 0.30s; }
+.wave-bar:nth-child(7)  { animation-delay: 0.20s; }
+.wave-bar:nth-child(8)  { animation-delay: 0.10s; }
+.wave-bar:nth-child(9)  { animation-delay: 0.00s; }
+
+/* ─── Score ring animation ───────────────────────────────────────────────── */
+@keyframes scoreRingIn {
+  from { stroke-dashoffset: 565; }
+  to   { stroke-dashoffset: var(--ring-offset, 0); }
+}
+.score-ring { animation: scoreRingIn 1.4s cubic-bezier(0.34, 1.2, 0.64, 1) forwards; }
