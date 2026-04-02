@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApi } from '../../hooks/useApi'
+import { useAuth } from '../../hooks/useAuth'
 import { Card, CardTitle, Button, LoadingScreen } from '../../components/ui'
 import { Users, AlertCircle, Clock, FileText, Video, Loader2, Stethoscope } from 'lucide-react'
 import { motion } from 'framer-motion'
@@ -29,6 +30,7 @@ const SEVERITY_BADGE = {
 
 export const ClinicalDashboard = () => {
   const navigate = useNavigate()
+  const { user } = useAuth()
   const [startingMeet, setStartingMeet] = useState(false)
 
   const handleInstantMeet = async () => {
@@ -93,12 +95,12 @@ export const ClinicalDashboard = () => {
         />
       </div>
 
-      <motion.div className="space-y-8" variants={container} initial="hidden" animate="show">
+      <motion.div className="space-y-8" variants={container} initial="hidden" animate="show" style={{ opacity: 1 }}>
 
         {/* Welcome header */}
         <motion.div variants={item} className="flex items-start justify-between flex-wrap gap-4">
           <div>
-            <h1 className="text-3xl font-extrabold text-app mb-1">{greeting}, Dr. Clinician</h1>
+            <h1 className="text-3xl font-extrabold text-app mb-1">{greeting}, Dr. {user?.firstName || 'Clinician'} 👋</h1>
             <p className="text-gray-500 text-sm">Here's what's happening with your patients today</p>
           </div>
           {/* Quick action buttons */}
