@@ -240,6 +240,58 @@ function _pss10Interpretation(tier) {
   }[tier] || '';
 }
 
+// ─── Burnout Risk Score (Maslach-inspired acoustic composite) ────────────────
+// Three Maslach dimensions approximated from voice biomarkers:
+//
+//   Emotional Exhaustion (EE) — primary burnout predictor
+//     = chronic stress × 0.45 + depression × 0.35 + energy depletion × 0.20
+//
+//   Depersonalization (DP) — emotional numbing / disengagement
+//     = (100 - engagement_proxy) × 0.55 + depression × 0.30 + stress × 0.15
+//
+//   Reduced Personal Accomplishment (PA) — inversely scored
+//     = depression × 0.40 + chronic stress × 0.35 + anxiety × 0.25
+//
+// Composite Burnout Risk Score (BRS) — 0 (none) to 100 (severe burnout):
+//   BRS = EE × 0.50 + DP × 0.30 + (100 - PA_inverse_corrected) × 0.20
+//
+// BRS tiers: minimal (<30), mild (30-49), moderate (50-64), high (65-79), critical (≥80)
+// © Cittaa Health Services 2025
+
+function _computeBurnout(dep, anx, str) {
+  // Engagement proxy: inverse of combined distress (higher stress/dep = less engaged)
+  const engagementProxy = Math.max(0, 100 - (dep * 0.50 + str * 0.30 + anx * 0.20));
+
+  const EE = Math.min(100, str * 0.45 + dep * 0.35 + Math.max(0, 50 - engagementProxy) * 0.20 * 2);
+  const DP = Math.min(100, (100 - engagementProxy) * 0.55 + dep * 0.30 + str * 0.15);
+  const PA_inv = Math.min(100, dep * 0.40 + str * 0.35 + anx * 0.25);
+
+  const burnoutScore = Math.round(Math.min(100, EE * 0.50 + DP * 0.30 + PA_inv * 0.20));
+
+  const tier = burnoutScore < 30 ? 'minimal'
+             : burnoutScore < 50 ? 'mild'
+             : burnoutScore < 65 ? 'moderate'
+             : burnoutScore < 80 ? 'high'
+             :                     'critical';
+
+  return {
+    score: burnoutScore,
+    tier,
+    dimensions: {
+      emotionalExhaustion:        Math.round(EE),
+      depersonalization:          Math.round(DP),
+      reducedAccomplishment:      Math.round(PA_inv),
+    },
+    interpretation: {
+      minimal:  'No significant burnout indicators.',
+      mild:     'Early burnout markers detected. Regular self-care and workload review recommended.',
+      moderate: 'Moderate burnout risk. Work-life balance assessment and psychologist consultation advised.',
+      high:     'High burnout risk detected. Immediate workload reduction and clinical support strongly recommended.',
+      critical: 'Critical burnout signature. Urgent clinical intervention and possible leave may be needed.',
+    }[tier] || '',
+  };
+}
+
 function _generateRecs(dep, anx, str) {
   const recs = [];
   if (str > 55) recs.push('Try stress-reduction techniques like deep breathing or a short walk');
@@ -534,6 +586,7 @@ module.exports = async function audioAnalysisProcessor(job) {
     const wellnessLevel = _wellnessLevel(wellnessScore);
     const recs              = _generateRecs(dep, anx, str);
     const biomarkerFindings = _biomarkerFindings(featuresData);
+    const burnoutData       = _computeBurnout(dep, anx, str);
 
     // ── VocoScale™: Golden Standards mapping (PHQ-9 / GAD-7 / PSS-10) ─────────
     // Uses Cittaa's proprietary acoustic signature weighting + non-linear
@@ -567,9 +620,10 @@ module.exports = async function audioAnalysisProcessor(job) {
               depression: dep,
               anxiety:    anx,
               stress:     str,
-              burnout:    Math.round(str * 0.8),
-              engagement: Math.round(100 - str * 0.5),
+              burnout:    burnoutData.score,
+              engagement: Math.round(Math.max(0, 100 - (dep * 0.4 + str * 0.35 + anx * 0.25))),
             },
+            burnoutRisk: burnoutData,
             standardScales,
             biomarkerFindings,
             keyIndicators:           [],

@@ -177,4 +177,154 @@ router.get('/profile', requireAuth, async (req, res) => {
   }
 });
 
+// ============================================================================
+// CRISIS SOS
+// An employee can self-report a crisis — creates a critical alert immediately
+// and notifies assigned psychologists. Rate-limited to 1 per hour to prevent
+// accidental repeats.
+// ============================================================================
+router.post('/sos', requireAuth, async (req, res) => {
+  try {
+    const Alert = require('../models/Alert');
+    const userId   = (req.user.userId || req.user._id).toString();
+    const tenantId = req.user.tenantId;
+    const { message: userMessage, contactMe = true } = req.body;
+
+    // Rate-limit: block if a SOS was created within the last 60 min
+    const recentSOS = await Alert.findOne({
+      employeeId: userId,
+      alertType:  'crisis_alert',
+      'metadata.source': 'employee_sos',
+      triggeredAt: { $gte: new Date(Date.now() - 60 * 60 * 1000) },
+    }).lean();
+
+    if (recentSOS) {
+      return res.status(429).json({
+        success: false,
+        error: { message: 'A support request was already raised in the last hour. Your care team has been notified and will reach out shortly.' },
+      });
+    }
+
+    // Create crisis alert
+    const alert = await Alert.create({
+      tenantId,
+      employeeId: userId,
+      alertType:  'crisis_alert',
+      severity:   'critical',
+      title:      'Employee Crisis SOS — Immediate Support Requested',
+      message:    userMessage
+        ? `Employee has requested immediate support: "${userMessage}"`
+        : 'Employee has activated the Crisis SOS button and is requesting immediate support.',
+      riskDetails: {
+        riskLevel: 'red',
+        riskScore: 100,
+      },
+      status:      'new',
+      triggeredAt: new Date(),
+      metadata: {
+        source:          'employee_sos',
+        contactMeFlag:   contactMe,
+        selfReported:    true,
+        triggerThreshold: 'manual_sos',
+      },
+    });
+
+    // Try to find psychologists in this tenant and create notifications
+    try {
+      const emailService = require('../services/emailService');
+      const User = require('../models/User');
+      const psychologists = await User.find({
+        tenantId,
+        role: { $in: ['SENIOR_CLINICIAN', 'CLINICAL_PSYCHOLOGIST'] },
+        isActive: true,
+      }).select('email firstName lastName').lean();
+
+      const employee = await User.findById(userId).select('firstName lastName email').lean();
+
+      for (const psych of psychologists) {
+        await emailService.sendAlertNotification?.({
+          to: psych.email,
+          subject: '🚨 Crisis SOS — Immediate Attention Required',
+          clinicianName: `${psych.firstName} ${psych.lastName}`,
+          employeeName: employee ? `${employee.firstName} ${employee.lastName}` : 'An employee',
+          message: userMessage || 'Employee has activated the crisis SOS.',
+          alertId: alert._id,
+          priority: 'critical',
+        }).catch(() => {}); // non-fatal
+      }
+    } catch (notifyErr) {
+      // Non-fatal: alert was created, notification failure shouldn't block response
+    }
+
+    res.status(201).json({
+      success: true,
+      data: {
+        alertId:  alert._id,
+        message:  'Your support request has been received. A member of your care team will reach out to you as soon as possible.',
+        severity: 'critical',
+      },
+    });
+  } catch (err) {
+    logger.error('my/sos error', { error: err.message });
+    res.status(500).json({ success: false, error: { message: 'Failed to submit support request' } });
+  }
+});
+
+// ============================================================================
+// PERSONAL VOCOSCALE™ PROGRESS
+// Returns the employee's own PHQ-9 / GAD-7 / PSS-10 history for
+// the personal progress page (friendlier data shape than /history).
+// ============================================================================
+router.get('/vocoscale', requireAuth, async (req, res) => {
+  try {
+    const userId = (req.user.userId || req.user._id).toString();
+    const { weeks = 12 } = req.query;
+    const fromDate = new Date();
+    fromDate.setDate(fromDate.getDate() - parseInt(weeks) * 7);
+
+    const sessions = await Session.find({
+      patientId: userId,
+      status:    'completed',
+      createdAt: { $gte: fromDate },
+    })
+      .sort({ createdAt: 1 })
+      .select('createdAt employeeWellnessOutput vocacoreResults')
+      .lean();
+
+    const history = sessions.map(s => ({
+      date:         s.createdAt,
+      wellness:     s.employeeWellnessOutput?.wellnessScore ?? null,
+      wellnessLevel:s.employeeWellnessOutput?.wellnessLevel ?? null,
+      riskLevel:    s.vocacoreResults?.overallRiskLevel ?? null,
+      depression:   s.vocacoreResults?.dimensionalScores?.depression ?? null,
+      anxiety:      s.vocacoreResults?.dimensionalScores?.anxiety    ?? null,
+      stress:       s.vocacoreResults?.dimensionalScores?.stress     ?? null,
+      burnout:      s.vocacoreResults?.dimensionalScores?.burnout    ?? null,
+      phq9:         s.vocacoreResults?.standardScales?.phq9?.score   ?? null,
+      phq9Tier:     s.vocacoreResults?.standardScales?.phq9?.tier    ?? null,
+      gad7:         s.vocacoreResults?.standardScales?.gad7?.score   ?? null,
+      gad7Tier:     s.vocacoreResults?.standardScales?.gad7?.tier    ?? null,
+      pss10:        s.vocacoreResults?.standardScales?.pss10?.score  ?? null,
+      pss10Tier:    s.vocacoreResults?.standardScales?.pss10?.tier   ?? null,
+      clinicalFlag: s.vocacoreResults?.standardScales?.clinicalFlag  ?? null,
+    }));
+
+    // Latest snapshot
+    const latest = history.at(-1) || null;
+
+    // Week-over-week delta
+    const prev = history.at(-2) || null;
+    const wellnessDelta = (latest && prev && latest.wellness != null && prev.wellness != null)
+      ? Math.round(latest.wellness - prev.wellness) : null;
+
+    res.json({
+      success: true,
+      data: { history, latest, wellnessDelta, sessionCount: history.length },
+    });
+  } catch (err) {
+    logger.error('my/vocoscale error', { error: err.message });
+    res.status(500).json({ success: false, error: { message: 'Failed to load VocoScale™ data' } });
+  }
+});
+
 module.exports = router;

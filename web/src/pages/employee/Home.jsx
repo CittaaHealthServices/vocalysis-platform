@@ -2,11 +2,13 @@ import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   TrendingUp, TrendingDown, Minus, ArrowRight, Calendar, CheckCircle2,
-  Mic, Activity, Brain, Zap, Heart, Flame, BarChart3, BookOpen
+  Mic, Activity, Brain, Zap, Heart, Flame, BarChart3, BookOpen, AlertTriangle, Loader2
 } from 'lucide-react'
 import { useApi } from '../../hooks/useApi'
 import { Card, Button, LoadingScreen } from '../../components/ui'
 import api from '../../services/api'
+import toast from 'react-hot-toast'
+import { useState } from 'react'
 
 // Risk level → colour map
 const RISK_COLOR = {
@@ -124,9 +126,27 @@ const container = { hidden: {}, show: { transition: { staggerChildren: 0.12 } } 
 const item = { hidden: { opacity: 0, y: 22 }, show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: 'easeOut' } } }
 
 export const MyWellnessHome = () => {
-  const navigate = useNavigate()
+  const navigate   = useNavigate()
+  const [sosSending, setSosSending] = useState(false)
+  const [sosTriggered, setSosTriggered] = useState(false)
+
   const { data: wellnessResponse, isLoading } = useApi(['wellness', 'home'], () => api.get('/my/wellness'), { retry: 1, staleTime: 30_000 })
   const wellness = wellnessResponse?.data
+
+  const handleSOS = async () => {
+    if (sosTriggered) return
+    setSosSending(true)
+    try {
+      await api.post('/my/sos', { message: '', contactMe: true })
+      setSosTriggered(true)
+      toast.success('🚨 Your support request has been sent. Your care team will reach out shortly.', { duration: 6000 })
+    } catch (err) {
+      const msg = err?.response?.data?.error?.message || 'Could not send SOS. Please call your HR directly.'
+      toast.error(msg, { duration: 8000 })
+    } finally {
+      setSosSending(false)
+    }
+  }
 
   if (isLoading) return <LoadingScreen />
 
@@ -364,7 +384,7 @@ export const MyWellnessHome = () => {
                         className="flex items-center gap-2 w-full justify-center py-2 rounded-lg text-xs font-bold text-white"
                         style={{ background: 'linear-gradient(135deg, #1a73e8, #1558b0)' }}
                       >
-                        Join Google Meet
+                        Join Video Session
                       </button>
                     )}
                   </motion.div>
@@ -373,6 +393,45 @@ export const MyWellnessHome = () => {
             </Card>
           </motion.div>
         )}
+        {/* Crisis SOS Strip */}
+        <motion.div variants={item}>
+          <div className={`rounded-2xl p-5 border-2 transition-all ${
+            sosTriggered
+              ? 'bg-green-50 border-green-300'
+              : 'bg-red-50 border-red-200 hover:border-red-400'
+          }`}>
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${sosTriggered ? 'bg-green-100' : 'bg-red-100'}`}>
+                  <AlertTriangle className={`w-5 h-5 ${sosTriggered ? 'text-green-600' : 'text-red-600'}`} />
+                </div>
+                <div>
+                  <p className={`font-bold text-sm ${sosTriggered ? 'text-green-800' : 'text-red-800'}`}>
+                    {sosTriggered ? '✅ Support request sent' : 'Need immediate support?'}
+                  </p>
+                  <p className={`text-xs ${sosTriggered ? 'text-green-600' : 'text-red-500'}`}>
+                    {sosTriggered
+                      ? 'Your care team has been notified and will reach out shortly.'
+                      : 'If you are in distress, press the SOS button — your psychologist will be notified immediately.'}
+                  </p>
+                </div>
+              </div>
+              {!sosTriggered && (
+                <motion.button
+                  onClick={handleSOS}
+                  disabled={sosSending}
+                  whileHover={{ scale: 1.04 }}
+                  whileTap={{ scale: 0.97 }}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-bold shadow-md disabled:opacity-70 transition-colors"
+                >
+                  {sosSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <AlertTriangle className="w-4 h-4" />}
+                  {sosSending ? 'Sending…' : 'SOS — I Need Help Now'}
+                </motion.button>
+              )}
+            </div>
+          </div>
+        </motion.div>
+
       </motion.div>
     </div>
   )

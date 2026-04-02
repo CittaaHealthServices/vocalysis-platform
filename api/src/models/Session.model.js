@@ -149,6 +149,17 @@ const sessionSchema = new mongoose.Schema(
       },
       // Biomarker findings — 5 acoustic dimensions with clinical interpretation
       // Written by worker audioAnalysis.js, returned to employee-facing UI
+      // Burnout Risk Score (Maslach-inspired acoustic composite) — Cittaa IP
+      burnoutRisk: {
+        score: Number,
+        tier:  String,
+        dimensions: {
+          emotionalExhaustion:   Number,
+          depersonalization:     Number,
+          reducedAccomplishment: Number,
+        },
+        interpretation: String,
+      },
       // VocoScale™ — Cittaa's acoustic-derived standard scale scores
       standardScales: {
         phq9: {
