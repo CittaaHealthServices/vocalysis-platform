@@ -68,7 +68,8 @@ export const CEODashboard = () => {
 
   const { data, isLoading, isError, refetch } = useApi(
     ['ceo', 'overview'],
-    () => api.get('/cittaa-admin/overview').then(r => r.data?.data),
+    // axios interceptor already returns response.data, so r = { success, data: {...} }
+    () => api.get('/cittaa-admin/overview').then(r => r.data),
     { retry: 1, staleTime: 60_000 },
   )
 
