@@ -117,30 +117,73 @@ _seedRouter.post('/', async (req, res) => {
 
     const User   = require('./models/User');
     const Tenant = require('./models/Tenant');
-    // Find first tenant
-    const tenant = await Tenant.findOne({}).lean();
-    if (!tenant) return res.status(404).json({ error: 'No tenant found' });
-    const tenantId = tenant.tenantId || tenant._id.toString();
-    const TEST_PWD = 'TestPass@1234!';
-    const toCreate = [
-      { email: 'hr.admin@cittaa.in',      firstName: 'Test', lastName: 'HRAdmin',   role: 'HR_ADMIN',              userId: 'hr-admin-001'   },
-      { email: 'company.admin@cittaa.in',   firstName: 'Test', lastName: 'CompAdmin',  role: 'COMPANY_ADMIN',         userId: 'company-admin-001' },
-      { email: 'clinician@cittaa.in', firstName: 'Test', lastName: 'Clinician', role: 'CLINICAL_PSYCHOLOGIST', userId: 'clinician-001' },
-      { email: 'employee@cittaa.in', firstName: 'Demo', lastName: 'Employee', role: 'EMPLOYEE', userId: 'employee-001' },
+    const { v4: _uuidv4 } = require('uuid');
+
+    // ── Ensure Cittaa internal tenant exists ──────────────────────────────
+    let cittaaTenant = await Tenant.findOne({ tenantId: 'cittaa-internal' });
+    if (!cittaaTenant) {
+      cittaaTenant = await Tenant.create({
+        tenantId:              'cittaa-internal',
+        displayName:           'Cittaa Health Services',
+        legalName:             'Cittaa Health Services Pvt Ltd',
+        type:                  'clinic',
+        industry:              'Healthcare Technology',
+        contactEmail:          'info@cittaa.in',
+        contractTier:          'enterprise',
+        monthlyAssessmentQuota: 9999,
+        status:                'active',
+        featureFlags: {
+          hrDashboard: true, employeeSelfService: true, apiAccess: true,
+          whiteLabel: true, customBranding: true, advancedAnalytics: true,
+          bulkImport: true, googleIntegration: true,
+        },
+      });
+    }
+    const cittaaTenantId = cittaaTenant.tenantId;
+
+    // ── Cittaa internal users ─────────────────────────────────────────────
+    const cittaaUsers = [
+      { email: 'info@cittaa.in',    password: 'Cittaa@Admin2026!',   role: 'CITTAA_SUPER_ADMIN',    firstName: 'Cittaa',   lastName: 'Admin'    },
+      { email: 'sairam@cittaa.in',  password: 'Sairam@Cittaa2026!',  role: 'CITTAA_CEO',            firstName: 'Sairam',  lastName: 'Cittaa'   },
+      { email: 'hr@cittaa.in',      password: 'HR@Cittaa2026!',      role: 'HR_ADMIN',              firstName: 'Cittaa',  lastName: 'HR'       },
+      { email: 'pratya@cittaa.in',  password: 'Pratya@Cittaa2026!',  role: 'CLINICAL_PSYCHOLOGIST', firstName: 'Pratya',  lastName: 'Cittaa'   },
+      { email: 'abhijay@cittaa.in', password: 'Abhijay@Cittaa2026!', role: 'CLINICAL_PSYCHOLOGIST', firstName: 'Abhijay', lastName: 'Cittaa'   },
     ];
+
+    // ── Fallback: also create legacy test users on first available tenant ─
+    const fallbackTenant = await Tenant.findOne({}).lean();
+    const fallbackTenantId = fallbackTenant ? (fallbackTenant.tenantId || fallbackTenant._id.toString()) : cittaaTenantId;
+    const legacyUsers = [
+      { email: 'hr.admin@cittaa.in',      password: 'TestPass@1234!', role: 'HR_ADMIN',              firstName: 'Test',  lastName: 'HRAdmin'   },
+      { email: 'company.admin@cittaa.in', password: 'TestPass@1234!', role: 'COMPANY_ADMIN',         firstName: 'Test',  lastName: 'CompAdmin' },
+      { email: 'clinician@cittaa.in',     password: 'TestPass@1234!', role: 'CLINICAL_PSYCHOLOGIST', firstName: 'Test',  lastName: 'Clinician' },
+      { email: 'employee@cittaa.in',      password: 'TestPass@1234!', role: 'EMPLOYEE',              firstName: 'Demo',  lastName: 'Employee'  },
+    ];
+
     const results = [];
-    for (const u of toCreate) {
-      let userDoc = await User.findOne({ email: u.email });
+
+    const upsert = async (u, tenantId) => {
+      let userDoc = await User.findOne({ email: u.email.toLowerCase() });
       if (!userDoc) {
-        userDoc = new User({ ...u, tenantId, isActive: true });
+        userDoc = new User({
+          userId: _uuidv4(), tenantId, email: u.email.toLowerCase(),
+          role: u.role, firstName: u.firstName, lastName: u.lastName,
+          isActive: true, isEmailVerified: true,
+        });
       } else {
         userDoc.isActive = true;
+        userDoc.isEmailVerified = true;
+        userDoc.tenantId = tenantId;
       }
-      await userDoc.setPassword(TEST_PWD);
+      await userDoc.setPassword(u.password);
       await userDoc.save();
-      results.push({ ok: true, email: u.email, role: u.role });
-    }
-    res.json({ success: true, tenantId, users: results });
+      results.push({ ok: true, email: u.email, role: u.role, tenantId });
+    };
+
+    for (const u of cittaaUsers)  await upsert(u, cittaaTenantId);
+    for (const u of legacyUsers)  await upsert(u, fallbackTenantId);
+
+    res.json({ success: true, seeded: results.length, users: results });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
