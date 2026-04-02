@@ -431,7 +431,54 @@ module.exports = async function audioAnalysisProcessor(job) {
       logger.warn('Employee profile update failed (non-fatal): %s', profileErr.message);
     }
 
-    // ── Step 7: Notify VocoCore of completed session ──────────────────────────
+    // ── Step 7: WhatsApp — notify employee if high-risk + queue 3-day follow-up ─
+    if (highRisk) {
+      try {
+        const whatsapp  = require('../../../api/src/services/whatsappService')
+          || require('../../api/src/services/whatsappService');
+        const emp       = await Employee.findOne({ employeeId: patientId });
+        const empPhone  = emp?.phone || emp?.mobile;
+        const empName   = emp?.firstName || emp?.fullName?.split(' ')[0] || 'there';
+
+        // 7a. Send supportive WhatsApp to employee
+        if (empPhone) {
+          await whatsapp.sendHighRiskSupport({ phone: empPhone, name: empName, riskLevel });
+        }
+
+        // 7b. Schedule 3-day follow-up ping via delayed Bull job
+        const OutcomeFollowUp = require('../models/OutcomeFollowUp')
+          || require('../../api/src/models/OutcomeFollowUp');
+        const dims     = { depression: dep, anxiety: anx, stress: str, burnout: Math.round(str * 0.8) };
+        const dominant = ['depression','anxiety','stress','burnout'].reduce((a, b) => dims[a] > dims[b] ? a : b);
+
+        const followUpDoc = await OutcomeFollowUp.create({
+          tenantId,
+          employeeId:   patientId,
+          sessionId,
+          type:         'checkin_followup',
+          scheduledFor: new Date(Date.now() + 3 * 86400000),  // 3 days later
+          channel:      empPhone ? 'whatsapp' : 'email',
+          status:       'pending',
+          triggerContext: { riskLevel, wellnessScore, dominantDimension: dominant },
+          expiresAt:    new Date(Date.now() + 7 * 86400000),  // expire after 7 days
+        });
+
+        await queues.followUpReminders.add(
+          { followUpId: followUpDoc._id.toString(), employeeId: patientId, tenantId },
+          {
+            jobId: `followup-${sessionId}`,
+            delay: 3 * 24 * 60 * 60 * 1000,  // 3 days in ms
+            attempts: 3,
+            backoff: { type: 'exponential', delay: 60000 },
+          }
+        );
+        logger.info('[outcome] 3-day follow-up queued for session %s', sessionId);
+      } catch (waErr) {
+        logger.warn('[outcome] WhatsApp/follow-up setup failed (non-fatal): %s', waErr.message);
+      }
+    }
+
+    // ── Step 8: Notify VocoCore of completed session ──────────────────────────
     // This increments the session counter inside VocoCore and triggers an
     // ElevenLabs auto-retrain once every RETRAIN_SESSION_COUNT sessions (default 50).
     // Fire-and-forget — we do NOT await so the job completes instantly.

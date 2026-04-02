@@ -23,6 +23,8 @@ const myRoutes            = require('./routes/my.routes');
 const usersRoutes         = require('./routes/users.routes');
 const clinicalRoutes      = require('./routes/clinical.routes');
 const eapRoutes           = require('./routes/eap.routes');
+const coachingRoutes      = require('./routes/coaching.routes');
+const outcomesRoutes      = require('./routes/outcomes.routes');
 
 // Create Express app
 const app = express();
@@ -102,6 +104,8 @@ app.use('/my', myRoutes);
 app.use('/users', usersRoutes);
 app.use('/clinical', clinicalRoutes);
 app.use('/eap', eapRoutes);
+app.use('/coaching', coachingRoutes);
+app.use('/outcomes', outcomesRoutes);
 
 // ÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂ DEV SEED (temporary ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ creates test users for all roles) ÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂ
 const _seedRouter = express.Router();

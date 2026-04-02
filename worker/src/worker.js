@@ -6,11 +6,12 @@ const { connectDB, disconnectDB } = require('./db');
 
 // Global queues object
 const queues = {
-  audioAnalysis: null,
-  pdfGeneration: null,
+  audioAnalysis:    null,
+  pdfGeneration:    null,
   emailNotifications: null,
-  webhookDelivery: null,
-  bulkImport: null
+  webhookDelivery:  null,
+  bulkImport:       null,
+  followUpReminders: null,  // 3-day outcome follow-up pings
 };
 
 async function initializeWorker() {
@@ -66,6 +67,15 @@ async function initializeWorker() {
       }
     });
 
+    queues.followUpReminders = new Bull('follow-up-reminders', process.env.REDIS_URL || 'redis://localhost:6379', {
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 60000 },
+        timeout: 30000,
+        removeOnComplete: true,
+      }
+    });
+
     logger.info('Bull queues created successfully');
 
     // Register processors
@@ -85,6 +95,9 @@ async function initializeWorker() {
 
     queues.bulkImport.process(2, require('./processors/bulkImport'));
     logger.info('Bulk import processor registered (concurrency: 2)');
+
+    queues.followUpReminders.process(5, require('./processors/followUpReminder'));
+    logger.info('Follow-up reminder processor registered (concurrency: 5)');
 
     // Register cron jobs
     logger.info('Registering cron jobs');

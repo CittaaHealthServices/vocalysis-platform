@@ -31,6 +31,8 @@ import BulkImport from '../pages/hr/BulkImport'
 import HRAlerts from '../pages/hr/HRAlerts'
 import HRAnalytics from '../pages/hr/HRAnalytics'
 import Scheduling from '../pages/hr/Scheduling'
+import ManagerDashboard from '../pages/hr/ManagerDashboard'
+import ROIDashboard from '../pages/hr/ROIDashboard'
 
 // Company Pages
 import CompanyOverview from '../pages/company/CompanyOverview'
@@ -193,6 +195,14 @@ const router = createBrowserRouter([
       {
         path: 'scheduling',
         element: <Scheduling />,
+      },
+      {
+        path: 'coaching',
+        element: <ManagerDashboard />,
+      },
+      {
+        path: 'roi',
+        element: <ROIDashboard />,
       },
     ],
   },

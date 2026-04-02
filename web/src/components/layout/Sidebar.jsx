@@ -4,6 +4,7 @@ import {
   BarChart3, Users, Settings, AlertCircle, BookOpen, Clock,
   Home, FileText, Key, Activity, TrendingUp, Video,
   DollarSign, Building2, HeartPulse, LogOut, FlaskConical, Brain,
+  BrainCircuit, Award,
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 
@@ -48,8 +49,10 @@ const SIDEBAR_ITEMS = {
     { label: 'Overview',    path: '/hr',               icon: Home       },
     { label: 'Employees',   path: '/hr/employees',     icon: Users      },
     { label: 'Alerts',      path: '/hr/alerts',        icon: AlertCircle},
-    { label: 'Analytics',   path: '/hr/analytics',     icon: TrendingUp },
-    { label: 'Scheduling',  path: '/hr/scheduling',    icon: Clock      },
+    { label: 'Analytics',   path: '/hr/analytics',     icon: TrendingUp   },
+    { label: 'Scheduling',  path: '/hr/scheduling',    icon: Clock        },
+    { label: 'Coaching',    path: '/hr/coaching',      icon: BrainCircuit },
+    { label: 'ROI Impact',  path: '/hr/roi',           icon: Award        },
   ],
   SENIOR_CLINICIAN: [
     { label: 'Dashboard',      path: '/clinical',                  icon: Home       },
