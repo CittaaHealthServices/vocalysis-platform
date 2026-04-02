@@ -171,9 +171,13 @@ _seedRouter.post('/', async (req, res) => {
           isActive: true, isEmailVerified: true,
         });
       } else {
-        userDoc.isActive = true;
+        // Always overwrite role, name, tenantId, and active state on reseed
+        userDoc.role            = u.role;
+        userDoc.firstName       = u.firstName;
+        userDoc.lastName        = u.lastName;
+        userDoc.tenantId        = tenantId;
+        userDoc.isActive        = true;
         userDoc.isEmailVerified = true;
-        userDoc.tenantId = tenantId;
       }
       await userDoc.setPassword(u.password);
       await userDoc.save();
