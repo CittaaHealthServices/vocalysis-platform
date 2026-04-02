@@ -168,7 +168,7 @@ export const ClinicalAnalytics = () => {
         <div>
           <h1 className="text-3xl font-extrabold text-app flex items-center gap-2">
             <Brain className="w-7 h-7 text-violet-600" />
-            Clinical Analytics
+            Clinical Analytics 🔬
           </h1>
           <p className="text-gray-500 text-sm mt-1">
             Powered by <span className="font-semibold text-violet-700">VocoScale™</span> — PHQ-9 · GAD-7 · PSS-10 acoustic derivation
@@ -226,13 +226,13 @@ export const ClinicalAnalytics = () => {
       </motion.div>
 
       {/* Tab selector */}
-      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
+      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit flex-wrap">
         {[
-          { id: 'overview',   label: 'Overview'   },
-          { id: 'scales',     label: 'VocoScale™' },
-          { id: 'trends',     label: 'Trends'     },
-          { id: 'heatmap',    label: 'Departments'},
-          { id: 'atrisk',     label: 'At-Risk'    },
+          { id: 'overview',   label: '📊 Overview'   },
+          { id: 'scales',     label: '🧠 VocoScale™' },
+          { id: 'trends',     label: '📈 Trends'     },
+          { id: 'heatmap',    label: '🏢 Departments'},
+          { id: 'atrisk',     label: '🚨 At-Risk'    },
         ].map(t => (
           <button
             key={t.id}
