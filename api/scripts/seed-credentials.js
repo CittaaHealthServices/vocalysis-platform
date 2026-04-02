@@ -124,16 +124,45 @@ async function main() {
     {
       email:     'pratya@cittaa.in',
       password:  'Pratya@Cittaa2026!',
-      role:      'CLINICAL_PSYCHOLOGIST',
+      role:      'CITTAA_SUPER_ADMIN',   // COO / Co-founder
       firstName: 'Pratya',
       lastName:  'Cittaa',
     },
     {
       email:     'abhijay@cittaa.in',
       password:  'Abhijay@Cittaa2026!',
-      role:      'CLINICAL_PSYCHOLOGIST',
+      role:      'CITTAA_SUPER_ADMIN',   // Head of Collaborations / Founding member
       firstName: 'Abhijay',
       lastName:  'Cittaa',
+    },
+    // ── Psychologists ──────────────────────────────────────────────────────
+    {
+      email:     'divyanshi@cittaa.in',
+      password:  'Divyanshi@Cittaa2026!',
+      role:      'CLINICAL_PSYCHOLOGIST',
+      firstName: 'Divyanshi',
+      lastName:  'Shah',
+    },
+    {
+      email:     'khushi@cittaa.in',
+      password:  'Khushi@Cittaa2026!',
+      role:      'CLINICAL_PSYCHOLOGIST',
+      firstName: 'Khushi',
+      lastName:  'Chatterjee',
+    },
+    {
+      email:     'jessica@cittaa.in',
+      password:  'Jessica@Cittaa2026!',
+      role:      'CLINICAL_PSYCHOLOGIST',
+      firstName: 'Jessica',
+      lastName:  'Patni',
+    },
+    {
+      email:     'yashswini@cittaa.in',
+      password:  'Yashswini@Cittaa2026!',
+      role:      'CLINICAL_PSYCHOLOGIST',
+      firstName: 'Yashswini',
+      lastName:  'Pulgar',
     },
   ];
 

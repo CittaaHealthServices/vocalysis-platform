@@ -146,8 +146,13 @@ _seedRouter.post('/', async (req, res) => {
       { email: 'info@cittaa.in',    password: 'Cittaa@Admin2026!',   role: 'CITTAA_SUPER_ADMIN',    firstName: 'Cittaa',   lastName: 'Admin'    },
       { email: 'sairam@cittaa.in',  password: 'Sairam@Cittaa2026!',  role: 'CITTAA_CEO',            firstName: 'Sairam',  lastName: 'Cittaa'   },
       { email: 'hr@cittaa.in',      password: 'HR@Cittaa2026!',      role: 'HR_ADMIN',              firstName: 'Cittaa',  lastName: 'HR'       },
-      { email: 'pratya@cittaa.in',  password: 'Pratya@Cittaa2026!',  role: 'CLINICAL_PSYCHOLOGIST', firstName: 'Pratya',  lastName: 'Cittaa'   },
-      { email: 'abhijay@cittaa.in', password: 'Abhijay@Cittaa2026!', role: 'CLINICAL_PSYCHOLOGIST', firstName: 'Abhijay', lastName: 'Cittaa'   },
+      { email: 'pratya@cittaa.in',     password: 'Pratya@Cittaa2026!',     role: 'CITTAA_SUPER_ADMIN',    firstName: 'Pratya',     lastName: 'Cittaa'     },
+      { email: 'abhijay@cittaa.in',    password: 'Abhijay@Cittaa2026!',    role: 'CITTAA_SUPER_ADMIN',    firstName: 'Abhijay',    lastName: 'Cittaa'     },
+      // Psychologists
+      { email: 'divyanshi@cittaa.in',  password: 'Divyanshi@Cittaa2026!',  role: 'CLINICAL_PSYCHOLOGIST', firstName: 'Divyanshi',  lastName: 'Shah'       },
+      { email: 'khushi@cittaa.in',     password: 'Khushi@Cittaa2026!',     role: 'CLINICAL_PSYCHOLOGIST', firstName: 'Khushi',     lastName: 'Chatterjee' },
+      { email: 'jessica@cittaa.in',    password: 'Jessica@Cittaa2026!',    role: 'CLINICAL_PSYCHOLOGIST', firstName: 'Jessica',    lastName: 'Patni'      },
+      { email: 'yashswini@cittaa.in',  password: 'Yashswini@Cittaa2026!',  role: 'CLINICAL_PSYCHOLOGIST', firstName: 'Yashswini',  lastName: 'Pulgar'     },
     ];
 
     // ── Fallback: also create legacy test users on first available tenant ─

@@ -15,7 +15,7 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const { getPlaybook, getDominantDimension } = require('../data/coachingPlaybooks');
 const logger   = require('../utils/logger');
 
-const MANAGER_ROLES = ['HR_ADMIN', 'COMPANY_ADMIN', 'CLINICAL_LEAD', 'CITTAA_SUPER_ADMIN'];
+const MANAGER_ROLES = ['HR_ADMIN', 'COMPANY_ADMIN', 'CLINICAL_LEAD', 'CITTAA_SUPER_ADMIN', 'CITTAA_CEO'];
 
 // ── GET /coaching/team-heatmap ────────────────────────────────────────────────
 // Returns anonymised team wellness overview for this manager's scope.

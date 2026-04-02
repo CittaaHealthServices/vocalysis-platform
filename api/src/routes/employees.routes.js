@@ -9,6 +9,9 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const logger = require('../utils/logger');
 const auditService = require('../services/auditService');
 const emailService = require('../services/emailService');
+
+const EMP_VIEW_ROLES   = ['HR_ADMIN', 'COMPANY_ADMIN', 'SENIOR_CLINICIAN', 'CLINICAL_PSYCHOLOGIST', 'CITTAA_SUPER_ADMIN', 'CITTAA_CEO'];
+const EMP_MANAGE_ROLES = ['HR_ADMIN', 'COMPANY_ADMIN', 'CITTAA_SUPER_ADMIN', 'CITTAA_CEO'];
 const Bull = require('bull');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
@@ -25,7 +28,7 @@ const bulkImportQueue = new Bull('bulk-employee-import', {
  * GET /employees
  * List employees (scoped by role)
  */
-router.get('/', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'CLINICIAN']), async (req, res) => {
+router.get('/', requireAuth, requireRole(EMP_VIEW_ROLES), async (req, res) => {
   try {
     const { page = 1, limit = 20, search, status } = req.query;
     const tenantId = req.user.tenantId;
@@ -91,7 +94,7 @@ router.get('/', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'CLINICIA
  * POST /employees
  * Add single employee
  */
-router.post('/', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN']), async (req, res) => {
+router.post('/', requireAuth, requireRole(EMP_MANAGE_ROLES), async (req, res) => {
   try {
     const { email, firstName, lastName, department } = req.body;
     const userId = (req.user.userId || req.user._id);
@@ -175,7 +178,7 @@ router.post('/', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN']), async 
  * GET /employees/:id
  * Get employee profile
  */
-router.get('/:id', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'CLINICIAN']), async (req, res) => {
+router.get('/:id', requireAuth, requireRole(EMP_VIEW_ROLES), async (req, res) => {
   try {
     const { id } = req.params;
     const tenantId = req.user.tenantId;
@@ -229,7 +232,7 @@ router.get('/:id', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'CLINI
  * PUT /employees/:id
  * Update employee details
  */
-router.put('/:id', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN']), async (req, res) => {
+router.put('/:id', requireAuth, requireRole(EMP_MANAGE_ROLES), async (req, res) => {
   try {
     const { id } = req.params;
     const { firstName, lastName, department, email } = req.body;
@@ -292,7 +295,7 @@ router.put('/:id', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN']), asyn
  * DELETE /employees/:id
  * Offboard employee
  */
-router.delete('/:id', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN']), async (req, res) => {
+router.delete('/:id', requireAuth, requireRole(EMP_MANAGE_ROLES), async (req, res) => {
   try {
     const { id } = req.params;
     const { reason } = req.body;
@@ -337,7 +340,7 @@ router.delete('/:id', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN']), a
  * GET /employees/:id/sessions
  * Get employee's assessment history
  */
-router.get('/:id/sessions', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'CLINICIAN']), async (req, res) => {
+router.get('/:id/sessions', requireAuth, requireRole(EMP_VIEW_ROLES), async (req, res) => {
   try {
     const { id } = req.params;
     const { page = 1, limit = 20 } = req.query;
@@ -393,7 +396,7 @@ router.get('/:id/sessions', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN
  * POST /employees/bulk-import
  * Bulk import employees from CSV
  */
-router.post('/bulk-import', requireAuth, requireRole(['COMPANY_ADMIN']), upload.single('csv'), async (req, res) => {
+router.post('/bulk-import', requireAuth, requireRole(EMP_MANAGE_ROLES), upload.single('csv'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'CSV file required' });
@@ -566,7 +569,7 @@ router.get('/import/:batchId', requireAuth, async (req, res) => {
  * POST /employees/:id/invite
  * Send assessment invitation
  */
-router.post('/:id/invite', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN']), async (req, res) => {
+router.post('/:id/invite', requireAuth, requireRole(EMP_MANAGE_ROLES), async (req, res) => {
   try {
     const { id } = req.params;
     const { scheduledAt } = req.body;
@@ -614,7 +617,7 @@ router.post('/:id/invite', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN'
  * POST /employees/:id/schedule
  * Set/update assessment schedule
  */
-router.post('/:id/schedule', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN']), async (req, res) => {
+router.post('/:id/schedule', requireAuth, requireRole(EMP_MANAGE_ROLES), async (req, res) => {
   try {
     const { id } = req.params;
     const { frequency, nextAssessmentDate } = req.body;
@@ -658,7 +661,7 @@ router.post('/:id/schedule', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMI
  * POST /employees/bulk-json
  * Bulk import employees from JSON array (used by BulkImport.jsx)
  */
-router.post('/bulk-json', requireAuth, requireRole(['COMPANY_ADMIN', 'HR_ADMIN']), async (req, res) => {
+router.post('/bulk-json', requireAuth, requireRole(EMP_MANAGE_ROLES), async (req, res) => {
   try {
     const { employees } = req.body;
     if (!Array.isArray(employees) || employees.length === 0) {

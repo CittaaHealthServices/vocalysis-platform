@@ -6,35 +6,138 @@ const AuditLog = require('../models/AuditLog.model');
 const ApiKey = require('../models/ApiKey.model');
 const Tenant = require('../models/Tenant');
 const User = require('../models/User');
+const Session = require('../models/Session');
+const Alert = require('../models/Alert');
 const logger = require('../utils/logger');
 
 // All routes require super admin
-const superAdmin = [requireAuth, requireRole(['CITTAA_SUPER_ADMIN'])];
+const superAdmin = [requireAuth, requireRole(['CITTAA_SUPER_ADMIN', 'CITTAA_CEO'])];
 
 // ============================================================================
 // OVERVIEW — basic platform stats
 // ============================================================================
 router.get('/overview', ...superAdmin, async (req, res) => {
   try {
-    const [tenantCount, userCount, activeApiKeys, recentLogs] = await Promise.all([
-      Tenant.countDocuments({}),
-      User.countDocuments({ isActive: true }),
+    const now      = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const [
+      allTenants,
+      totalEmployees,
+      activeApiKeys,
+      assessmentsToday,
+      assessmentsThisMonth,
+      activeAlerts,
+      recentLogs,
+      wellnessAgg,
+      riskAgg,
+    ] = await Promise.all([
+      Tenant.find({}).select('tenantId displayName status contractTier employeeCount monthlyAssessmentQuota').lean(),
+      User.countDocuments({ role: 'EMPLOYEE', isActive: true }),
       ApiKey.countDocuments({ isActive: true }),
+      Session.countDocuments({ createdAt: { $gte: todayStart }, status: 'completed' }),
+      Session.countDocuments({ createdAt: { $gte: monthStart }, status: 'completed' }),
+      Alert.countDocuments({ status: 'new' }),
       AuditLog.find({}).sort({ timestamp: -1 }).limit(5).lean(),
+      Session.aggregate([
+        { $match: { status: 'completed', 'vocacoreResults.wellnessScore': { $gt: 0 } } },
+        { $group: { _id: null, avg: { $avg: '$vocacoreResults.wellnessScore' }, count: { $sum: 1 } } },
+      ]),
+      Session.aggregate([
+        { $match: { status: 'completed' } },
+        { $group: { _id: '$vocacoreResults.riskLevel', count: { $sum: 1 } } },
+      ]),
     ]);
+
+    // Monthly assessment trend (last 6 months)
+    const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+    const monthlyAgg = await Session.aggregate([
+      { $match: { status: 'completed', createdAt: { $gte: sixMonthsAgo } } },
+      {
+        $group: {
+          _id: { year: { $year: '$createdAt' }, month: { $month: '$createdAt' } },
+          count: { $sum: 1 },
+          avgScore: { $avg: '$vocacoreResults.wellnessScore' },
+        },
+      },
+      { $sort: { '_id.year': 1, '_id.month': 1 } },
+    ]);
+
+    const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const monthlyData = monthlyAgg.map(m => ({
+      month:       MONTH_NAMES[m._id.month - 1],
+      assessments: m.count,
+      avgScore:    Math.round(m.avgScore || 0),
+    }));
+
+    // Risk distribution
+    const riskMap = {};
+    riskAgg.forEach(r => { riskMap[r._id || 'unknown'] = r.count; });
+    const riskDist = [
+      { name: 'Low Risk',    value: riskMap['low']      || 0 },
+      { name: 'Medium Risk', value: riskMap['medium']   || riskMap['moderate'] || 0 },
+      { name: 'High Risk',   value: riskMap['high']     || 0 },
+      { name: 'Critical',    value: riskMap['critical'] || 0 },
+    ];
+
+    // Per-tenant enriched data
+    const tenantIds = allTenants.map(t => t.tenantId);
+    const [tenantEmpCounts, tenantSessionAggs] = await Promise.all([
+      User.aggregate([
+        { $match: { role: 'EMPLOYEE', isActive: true, tenantId: { $in: tenantIds } } },
+        { $group: { _id: '$tenantId', count: { $sum: 1 } } },
+      ]),
+      Session.aggregate([
+        { $match: { status: 'completed', tenantId: { $in: tenantIds } } },
+        { $group: { _id: '$tenantId', avgScore: { $avg: '$vocacoreResults.wellnessScore' }, sessions: { $sum: 1 } } },
+      ]),
+    ]);
+    const empMap     = {};  tenantEmpCounts.forEach(e => { empMap[e._id] = e.count; });
+    const sessionMap = {};  tenantSessionAggs.forEach(s => { sessionMap[s._id] = s; });
+    const [tenantAlertCounts] = await Promise.all([
+      Alert.aggregate([
+        { $match: { status: 'new', tenantId: { $in: tenantIds } } },
+        { $group: { _id: '$tenantId', count: { $sum: 1 } } },
+      ]),
+    ]);
+    const alertMap = {};  tenantAlertCounts.forEach(a => { alertMap[a._id] = a.count; });
+
+    const topTenants = allTenants
+      .map(t => ({
+        name:      t.displayName,
+        tenantId:  t.tenantId,
+        status:    t.status,
+        tier:      t.contractTier,
+        employees: empMap[t.tenantId] || 0,
+        wellness:  Math.round(sessionMap[t.tenantId]?.avgScore || 0),
+        sessions:  sessionMap[t.tenantId]?.sessions || 0,
+        alerts:    alertMap[t.tenantId] || 0,
+      }))
+      .sort((a, b) => b.employees - a.employees)
+      .slice(0, 10);
 
     res.json({
       success: true,
       data: {
-        tenants: tenantCount,
-        activeUsers: userCount,
+        activeTenants:        allTenants.filter(t => t.status === 'active').length,
+        totalTenants:         allTenants.length,
+        totalEmployees,
         activeApiKeys,
+        assessmentsToday,
+        assessmentsThisMonth,
+        activeAlerts,
+        avgWellnessScore:     wellnessAgg[0] ? Math.round(wellnessAgg[0].avg) : 0,
+        totalAssessmentsEver: wellnessAgg[0]?.count || 0,
+        monthlyData,
+        riskDist,
+        topTenants,
         recentActivity: recentLogs.map(l => ({
-          id: l._id,
-          action: l.action,
-          userId: l.userId,
+          id:        l._id,
+          action:    l.action,
+          userId:    l.userId,
           timestamp: l.timestamp,
-          outcome: l.outcome,
+          outcome:   l.outcome,
         })),
       },
     });

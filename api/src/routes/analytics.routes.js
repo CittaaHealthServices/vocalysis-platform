@@ -8,6 +8,9 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const logger = require('../utils/logger');
 const auditService = require('../services/auditService');
 
+// Roles that can view analytics across their tenant
+const ANALYTICS_ROLES = ['HR_ADMIN', 'COMPANY_ADMIN', 'SENIOR_CLINICIAN', 'CLINICAL_PSYCHOLOGIST', 'CITTAA_SUPER_ADMIN', 'CITTAA_CEO'];
+
 /**
  * GET /analytics/overview
  * Dashboard stats (scoped by role)
@@ -98,7 +101,7 @@ router.get('/overview', requireAuth, async (req, res) => {
  * GET /analytics/trends
  * Trend data for last N days/weeks/months
  */
-router.get('/trends', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'CLINICIAN']), async (req, res) => {
+router.get('/trends', requireAuth, requireRole(ANALYTICS_ROLES), async (req, res) => {
   try {
     const { period = 'week' } = req.query;
     const tenantId = req.user.tenantId;
@@ -156,7 +159,7 @@ router.get('/trends', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'CL
  * GET /analytics/departments
  * Department-wise breakdown
  */
-router.get('/departments', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN']), async (req, res) => {
+router.get('/departments', requireAuth, requireRole(ANALYTICS_ROLES), async (req, res) => {
   try {
     const tenantId = req.user.tenantId;
     const userId = (req.user.userId || req.user._id);
@@ -216,7 +219,7 @@ router.get('/departments', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN'
  * GET /analytics/platform
  * Platform-wide statistics (CITTAA_SUPER_ADMIN only)
  */
-router.get('/platform', requireAuth, requireRole(['CITTAA_SUPER_ADMIN']), async (req, res) => {
+router.get('/platform', requireAuth, requireRole(['CITTAA_SUPER_ADMIN','CITTAA_CEO']), async (req, res) => {
   try {
     const userId = (req.user.userId || req.user._id);
     const requestId = req.requestId;
@@ -281,7 +284,7 @@ router.get('/platform', requireAuth, requireRole(['CITTAA_SUPER_ADMIN']), async 
  * GET /analytics/export
  * Export analytics data (CSV)
  */
-router.get('/export', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN']), async (req, res) => {
+router.get('/export', requireAuth, requireRole(ANALYTICS_ROLES), async (req, res) => {
   try {
     const { format = 'csv' } = req.query;
     const tenantId = req.user.tenantId;

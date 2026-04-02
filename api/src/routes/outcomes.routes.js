@@ -116,7 +116,7 @@ router.post('/consultation/:sessionId', requireAuth, requireRole(['CLINICAL_PSYC
 // ── GET /outcomes/roi ─────────────────────────────────────────────────────────
 // HR ROI dashboard: score improvement, response rates, intervention effectiveness.
 
-router.get('/roi', requireAuth, requireRole(['HR_ADMIN','COMPANY_ADMIN','CLINICAL_LEAD','CITTAA_SUPER_ADMIN']), async (req, res) => {
+router.get('/roi', requireAuth, requireRole(['HR_ADMIN','COMPANY_ADMIN','CLINICAL_LEAD','CITTAA_SUPER_ADMIN','CITTAA_CEO']), async (req, res) => {
   try {
     const tenantId = req.user.tenantId;
     const days     = parseInt(req.query.days) || 90;
@@ -229,7 +229,7 @@ router.get('/roi', requireAuth, requireRole(['HR_ADMIN','COMPANY_ADMIN','CLINICA
 // ── GET /outcomes/intervention-effectiveness ───────────────────────────────────
 // Which intervention types correlate with the most score improvement.
 
-router.get('/intervention-effectiveness', requireAuth, requireRole(['HR_ADMIN','COMPANY_ADMIN','CLINICAL_LEAD','CITTAA_SUPER_ADMIN']), async (req, res) => {
+router.get('/intervention-effectiveness', requireAuth, requireRole(['HR_ADMIN','COMPANY_ADMIN','CLINICAL_LEAD','CITTAA_SUPER_ADMIN','CITTAA_CEO']), async (req, res) => {
   try {
     const tenantId = req.user.tenantId;
     const since    = new Date(Date.now() - 90 * 86400000);
