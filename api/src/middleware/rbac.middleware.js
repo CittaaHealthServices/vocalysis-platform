@@ -2,6 +2,7 @@ const logger = require('../config/logger');
 
 const ROLES = {
   CITTAA_SUPER_ADMIN: 'CITTAA_SUPER_ADMIN',
+  CITTAA_CEO:         'CITTAA_CEO',
   COMPANY_ADMIN: 'COMPANY_ADMIN',
   HR_ADMIN: 'HR_ADMIN',
   SENIOR_CLINICIAN: 'SENIOR_CLINICIAN',
@@ -12,6 +13,7 @@ const ROLES = {
 
 const ROLE_HIERARCHY = {
   CITTAA_SUPER_ADMIN: 1,
+  CITTAA_CEO:         1,
   COMPANY_ADMIN: 2,
   HR_ADMIN: 3,
   SENIOR_CLINICIAN: 4,
@@ -20,7 +22,18 @@ const ROLE_HIERARCHY = {
   API_CLIENT: 7,
 };
 
+const expandLegacyRoles = (roles) =>
+  roles.flatMap((role) => {
+    if (role === 'CLINICIAN') {
+      return [ROLES.SENIOR_CLINICIAN, ROLES.CLINICAL_PSYCHOLOGIST];
+    }
+
+    return role;
+  });
+
 const requireRole = (...allowedRoles) => {
+  const normalizedAllowedRoles = expandLegacyRoles(allowedRoles.flat());
+
   return (req, res, next) => {
     if (!req.user) {
       logger.warn('Missing user context for role check', {
@@ -37,11 +50,11 @@ const requireRole = (...allowedRoles) => {
 
     const userRole = req.user.role;
 
-    if (!allowedRoles.includes(userRole)) {
+    if (!normalizedAllowedRoles.includes(userRole)) {
       logger.warn('User role not authorized', {
         userId: req.user.userId,
         userRole,
-        allowedRoles,
+        allowedRoles: normalizedAllowedRoles,
         path: req.path,
         method: req.method,
       });
@@ -50,7 +63,7 @@ const requireRole = (...allowedRoles) => {
         success: false,
         message: 'You do not have permission to access this resource',
         code: 'INSUFFICIENT_PERMISSIONS',
-        requiredRoles: allowedRoles,
+        requiredRoles: normalizedAllowedRoles,
       });
     }
 

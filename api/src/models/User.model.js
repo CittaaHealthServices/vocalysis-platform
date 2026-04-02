@@ -35,6 +35,7 @@ const userSchema = new mongoose.Schema(
       type: String,
       enum: [
         'CITTAA_SUPER_ADMIN',
+        'CITTAA_CEO',
         'COMPANY_ADMIN',
         'HR_ADMIN',
         'SENIOR_CLINICIAN',
@@ -55,8 +56,24 @@ const userSchema = new mongoose.Schema(
     },
     dateOfBirth: Date,
     employeeId: String,
+    department: String,
     departmentId: String,
     jobTitle: String,
+    createdBy: String,
+    lastAssessmentDate: Date,
+    offboardedAt: Date,
+    offboardingReason: String,
+    assessmentSchedule: {
+      frequency: {
+        type: String,
+        enum: ['weekly', 'monthly', 'quarterly'],
+      },
+      nextAssessmentDate: Date,
+    },
+    anonymizeReports: {
+      type: Boolean,
+      default: false,
+    },
     reportingManagerId: String,
     clinicianProfile: {
       rciRegistrationNumber: String,

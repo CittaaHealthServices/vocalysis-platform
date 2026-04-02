@@ -1,10 +1,13 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom'
+import { useAuth } from '../hooks/useAuth'
 import { ProtectedRoute } from './ProtectedRoute'
 
 // Auth Pages
 import Login from '../pages/auth/Login'
+import Register from '../pages/auth/Register'
 import ForgotPassword from '../pages/auth/ForgotPassword'
 import ResetPassword from '../pages/auth/ResetPassword'
+import GoogleCallback from '../pages/auth/GoogleCallback'
 
 // Layout
 import AppLayout from '../components/layout/AppLayout'
@@ -19,14 +22,18 @@ import Consultations from '../pages/clinical/Consultations'
 import ClinicalAlerts from '../pages/clinical/ClinicalAlerts'
 import ClinicalAnalytics from '../pages/clinical/ClinicalAnalytics'
 import ProtocolGuide from '../pages/clinical/ProtocolGuide'
+import SessionForms from '../pages/clinical/SessionForms'
 
 // HR Pages
 import HROverview from '../pages/hr/HROverview'
 import EmployeeList from '../pages/hr/EmployeeList'
+import EmployeeProfile from '../pages/hr/EmployeeProfile'
 import BulkImport from '../pages/hr/BulkImport'
 import HRAlerts from '../pages/hr/HRAlerts'
 import HRAnalytics from '../pages/hr/HRAnalytics'
 import Scheduling from '../pages/hr/Scheduling'
+import ManagerDashboard from '../pages/hr/ManagerDashboard'
+import ROIDashboard from '../pages/hr/ROIDashboard'
 
 // Company Pages
 import CompanyOverview from '../pages/company/CompanyOverview'
@@ -54,38 +61,39 @@ import APIKeys from '../pages/cittaa-admin/APIKeys'
 import HealthMonitor from '../pages/cittaa-admin/HealthMonitor'
 import AuditLog from '../pages/cittaa-admin/AuditLog'
 import ErrorLog from '../pages/cittaa-admin/ErrorLog'
+import TrialManagement from '../pages/cittaa-admin/TrialManagement'
+import Psychologists from '../pages/cittaa-admin/Psychologists'
+import EscalationManagement from '../pages/cittaa-admin/EscalationManagement'
+
+// CEO Pages
+import CEODashboard from '../pages/ceo/CEODashboard'
+
+// EAP Pages
+import EAPDashboard from '../pages/eap/EAPDashboard'
 
 // Error Pages
 import NotFound from '../pages/errors/NotFound'
 import Unauthorized from '../pages/errors/Unauthorized'
 
 const ROLES = {
-  CITTAA_SUPER_ADMIN: 'CITTAA_SUPER_ADMIN',
-  COMPANY_ADMIN: 'COMPANY_ADMIN',
-  HR_ADMIN: 'HR_ADMIN',
-  SENIOR_CLINICIAN: 'SENIOR_CLINICIAN',
+  CITTAA_SUPER_ADMIN:    'CITTAA_SUPER_ADMIN',
+  CITTAA_CEO:            'CITTAA_CEO',
+  COMPANY_ADMIN:         'COMPANY_ADMIN',
+  HR_ADMIN:              'HR_ADMIN',
+  SENIOR_CLINICIAN:      'SENIOR_CLINICIAN',
   CLINICAL_PSYCHOLOGIST: 'CLINICAL_PSYCHOLOGIST',
-  EMPLOYEE: 'EMPLOYEE',
+  EAP_PROVIDER:          'EAP_PROVIDER',
+  EMPLOYEE:              'EMPLOYEE',
 }
 
 const router = createBrowserRouter([
   // Auth Routes
-  {
-    path: '/login',
-    element: <Login />,
-  },
-  {
-    path: '/forgot-password',
-    element: <ForgotPassword />,
-  },
-  {
-    path: '/reset-password/:token',
-    element: <ResetPassword />,
-  },
-  {
-    path: '/unauthorized',
-    element: <Unauthorized />,
-  },
+  { path: '/login',                  element: <Login /> },
+  { path: '/register',               element: <Register /> },
+  { path: '/forgot-password',        element: <ForgotPassword /> },
+  { path: '/reset-password/:token',  element: <ResetPassword /> },
+  { path: '/unauthorized',           element: <Unauthorized /> },
+  { path: '/auth/callback',          element: <GoogleCallback /> },
 
   // Clinical Routes
   {
@@ -96,42 +104,16 @@ const router = createBrowserRouter([
       </ProtectedRoute>
     ),
     children: [
-      {
-        index: true,
-        element: <ClinicalDashboard />,
-      },
-      {
-        path: 'patients',
-        element: <PatientRegistry />,
-      },
-      {
-        path: 'patients/:id',
-        element: <PatientProfile />,
-      },
-      {
-        path: 'assessment/new',
-        element: <NewAssessment />,
-      },
-      {
-        path: 'session/:id',
-        element: <SessionResults />,
-      },
-      {
-        path: 'alerts',
-        element: <ClinicalAlerts />,
-      },
-      {
-        path: 'analytics',
-        element: <ClinicalAnalytics />,
-      },
-      {
-        path: 'consultations',
-        element: <Consultations />,
-      },
-      {
-        path: 'protocol',
-        element: <ProtocolGuide />,
-      },
+      { index: true,                element: <ClinicalDashboard /> },
+      { path: 'patients',           element: <PatientRegistry /> },
+      { path: 'patients/:id',       element: <PatientProfile /> },
+      { path: 'assessment/new',     element: <NewAssessment /> },
+      { path: 'session/:id',        element: <SessionResults /> },
+      { path: 'alerts',             element: <ClinicalAlerts /> },
+      { path: 'analytics',          element: <ClinicalAnalytics /> },
+      { path: 'consultations',      element: <Consultations /> },
+      { path: 'protocol',           element: <ProtocolGuide /> },
+      { path: 'session-forms',      element: <SessionForms /> },
     ],
   },
 
@@ -144,30 +126,15 @@ const router = createBrowserRouter([
       </ProtectedRoute>
     ),
     children: [
-      {
-        index: true,
-        element: <HROverview />,
-      },
-      {
-        path: 'employees',
-        element: <EmployeeList />,
-      },
-      {
-        path: 'employees/import',
-        element: <BulkImport />,
-      },
-      {
-        path: 'alerts',
-        element: <HRAlerts />,
-      },
-      {
-        path: 'analytics',
-        element: <HRAnalytics />,
-      },
-      {
-        path: 'scheduling',
-        element: <Scheduling />,
-      },
+      { index: true,                element: <HROverview /> },
+      { path: 'employees',          element: <EmployeeList /> },
+      { path: 'employees/import',   element: <BulkImport /> },
+      { path: 'employees/:id',      element: <EmployeeProfile /> },
+      { path: 'alerts',             element: <HRAlerts /> },
+      { path: 'analytics',          element: <HRAnalytics /> },
+      { path: 'scheduling',         element: <Scheduling /> },
+      { path: 'coaching',           element: <ManagerDashboard /> },
+      { path: 'roi',                element: <ROIDashboard /> },
     ],
   },
 
@@ -180,128 +147,94 @@ const router = createBrowserRouter([
       </ProtectedRoute>
     ),
     children: [
-      {
-        index: true,
-        element: <CompanyOverview />,
-      },
-      {
-        path: 'hr-admins',
-        element: <ManageHRAdmins />,
-      },
-      {
-        path: 'departments',
-        element: <Departments />,
-      },
-      {
-        path: 'settings',
-        element: <CompanySettings />,
-      },
-      {
-        path: 'billing',
-        element: <Billing />,
-      },
-      {
-        path: 'api-keys',
-        element: <CompanyAPIKeys />,
-      },
+      { index: true,         element: <CompanyOverview /> },
+      { path: 'hr-admins',   element: <ManageHRAdmins /> },
+      { path: 'departments', element: <Departments /> },
+      { path: 'settings',    element: <CompanySettings /> },
+      { path: 'billing',     element: <Billing /> },
+      { path: 'api-keys',    element: <CompanyAPIKeys /> },
     ],
   },
 
-  // Employee Routes
+  // Wellness Routes — accessible by all roles
   {
     path: '/my',
     element: (
-      <ProtectedRoute requiredRoles={[ROLES.EMPLOYEE]}>
+      <ProtectedRoute requiredRoles={[
+        ROLES.EMPLOYEE,
+        ROLES.CITTAA_SUPER_ADMIN,
+        ROLES.CITTAA_CEO,
+        ROLES.HR_ADMIN,
+        ROLES.COMPANY_ADMIN,
+        ROLES.CLINICAL_PSYCHOLOGIST,
+        ROLES.SENIOR_CLINICIAN,
+      ]}>
         <AppLayout />
       </ProtectedRoute>
     ),
     children: [
-      {
-        index: true,
-        element: <MyWellnessHome />,
-      },
-      {
-        path: 'check-in',
-        element: <WellnessCheckIn />,
-      },
-      {
-        path: 'history',
-        element: <MyHistory />,
-      },
-      {
-        path: 'resources',
-        element: <Resources />,
-      },
-      {
-        path: 'profile',
-        element: <MyProfile />,
-      },
-      {
-        path: 'consultations',
-        element: <MyConsultations />,
-      },
+      { index: true,           element: <MyWellnessHome /> },
+      { path: 'check-in',      element: <WellnessCheckIn /> },
+      { path: 'history',       element: <MyHistory /> },
+      { path: 'resources',     element: <Resources /> },
+      { path: 'profile',       element: <MyProfile /> },
+      { path: 'consultations', element: <MyConsultations /> },
     ],
   },
 
-  // Cittaa Admin Routes
+  // CEO Routes
   {
-    path: '/cittaa-admin',
+    path: '/ceo',
     element: (
-      <ProtectedRoute requiredRoles={[ROLES.CITTAA_SUPER_ADMIN]}>
+      <ProtectedRoute requiredRoles={[ROLES.CITTAA_CEO]}>
         <AppLayout />
       </ProtectedRoute>
     ),
     children: [
-      {
-        index: true,
-        element: <CittaaAdminOverview />,
-      },
-      {
-        path: 'tenants',
-        element: <TenantList />,
-      },
-      {
-        path: 'tenants/:id',
-        element: <TenantDetail />,
-      },
-      {
-        path: 'tenants/new',
-        element: <OnboardWizard />,
-      },
-      {
-        path: 'analytics',
-        element: <CittaaAdminAnalytics />,
-      },
-      {
-        path: 'api-keys',
-        element: <APIKeys />,
-      },
-      {
-        path: 'health',
-        element: <HealthMonitor />,
-      },
-      {
-        path: 'audit-log',
-        element: <AuditLog />,
-      },
-      {
-        path: 'errors',
-        element: <ErrorLog />,
-      },
+      { index: true, element: <CEODashboard /> },
+    ],
+  },
+
+  // EAP Provider Routes
+  {
+    path: '/eap',
+    element: (
+      <ProtectedRoute requiredRoles={[ROLES.EAP_PROVIDER]}>
+        <AppLayout />
+      </ProtectedRoute>
+    ),
+    children: [
+      { index: true, element: <EAPDashboard /> },
+    ],
+  },
+
+  // Cittaa Admin Routes (also accessible by CEO)
+  {
+    path: '/cittaa-admin',
+    element: (
+      <ProtectedRoute requiredRoles={[ROLES.CITTAA_SUPER_ADMIN, ROLES.CITTAA_CEO]}>
+        <AppLayout />
+      </ProtectedRoute>
+    ),
+    children: [
+      { index: true,           element: <CittaaAdminOverview /> },
+      { path: 'tenants',       element: <TenantList /> },
+      { path: 'tenants/:id',   element: <TenantDetail /> },
+      { path: 'tenants/new',   element: <OnboardWizard /> },
+      { path: 'analytics',     element: <CittaaAdminAnalytics /> },
+      { path: 'api-keys',      element: <APIKeys /> },
+      { path: 'health',        element: <HealthMonitor /> },
+      { path: 'audit-log',     element: <AuditLog /> },
+      { path: 'errors',        element: <ErrorLog /> },
+      { path: 'trials',        element: <TrialManagement /> },
+      { path: 'psychologists', element: <Psychologists /> },
+      { path: 'escalations',   element: <EscalationManagement /> },
     ],
   },
 
   // Root redirect
-  {
-    path: '/',
-    element: <RootRedirect />,
-  },
-
-  // 404
-  {
-    path: '*',
-    element: <NotFound />,
-  },
+  { path: '/',  element: <RootRedirect /> },
+  { path: '*',  element: <NotFound /> },
 ])
 
 function RootRedirect() {
@@ -315,21 +248,16 @@ function RootRedirect() {
     return <Navigate to="/login" replace />
   }
 
-  // Redirect based on role
   switch (user.role) {
-    case ROLES.CITTAA_SUPER_ADMIN:
-      return <Navigate to="/cittaa-admin" replace />
-    case ROLES.COMPANY_ADMIN:
-      return <Navigate to="/company" replace />
-    case ROLES.HR_ADMIN:
-      return <Navigate to="/hr" replace />
+    case ROLES.CITTAA_SUPER_ADMIN:  return <Navigate to="/cittaa-admin" replace />
+    case ROLES.CITTAA_CEO:          return <Navigate to="/ceo" replace />
+    case ROLES.COMPANY_ADMIN:       return <Navigate to="/company" replace />
+    case ROLES.HR_ADMIN:            return <Navigate to="/hr" replace />
     case ROLES.SENIOR_CLINICIAN:
-    case ROLES.CLINICAL_PSYCHOLOGIST:
-      return <Navigate to="/clinical" replace />
-    case ROLES.EMPLOYEE:
-      return <Navigate to="/my" replace />
-    default:
-      return <Navigate to="/login" replace />
+    case ROLES.CLINICAL_PSYCHOLOGIST: return <Navigate to="/clinical" replace />
+    case ROLES.EAP_PROVIDER:        return <Navigate to="/eap" replace />
+    case ROLES.EMPLOYEE:            return <Navigate to="/my" replace />
+    default:                        return <Navigate to="/login" replace />
   }
 }
 

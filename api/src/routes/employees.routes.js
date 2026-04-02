@@ -10,8 +10,28 @@ const logger = require('../utils/logger');
 const auditService = require('../services/auditService');
 const emailService = require('../services/emailService');
 const Bull = require('bull');
-const bcrypt = require('bcrypt');
 const crypto = require('crypto');
+
+const mapEmployeeResponse = (employee) => ({
+  id: employee._id,
+  _id: employee._id,
+  email: employee.email,
+  firstName: employee.firstName,
+  lastName: employee.lastName,
+  phone: employee.phone || null,
+  department: employee.department || employee.departmentId || null,
+  role: employee.role || 'EMPLOYEE',
+  isActive: employee.isActive,
+  wellnessScore: employee.wellnessScore || null,
+  riskLevel: employee.riskLevel || 'LOW',
+  assessmentCount: employee.assessmentCount || 0,
+  joiningDate: employee.joiningDate || null,
+  employeeId: employee.employeeId || null,
+  profilePicture: employee.profilePicture || null,
+  createdAt: employee.createdAt,
+  lastAssessmentDate: employee.lastAssessmentDate || null,
+  assessmentSchedule: employee.assessmentSchedule || null
+});
 
 const upload = multer({ storage: multer.memoryStorage() });
 const bulkImportQueue = new Bull('bulk-employee-import', {
@@ -29,14 +49,16 @@ router.get('/', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'CLINICIA
   try {
     const { page = 1, limit = 20, search, status } = req.query;
     const tenantId = req.user.tenantId;
-    const userId = req.user._id;
+    const userId = req.user.userId;
     const userRole = req.user.role;
     const requestId = req.requestId;
 
-    let query = {
-      tenantId,
-      role: 'EMPLOYEE'
-    };
+    // Build role filter: exclude Cittaa super-admins unless a specific role is requested
+    const roleFilter = req.query.role
+      ? req.query.role.split(',')
+      : { $nin: ['CITTAA_SUPER_ADMIN', 'CITTAA_CEO'] };
+
+    let query = { tenantId, role: roleFilter };
 
     if (search) {
       query.$or = [
@@ -50,11 +72,15 @@ router.get('/', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'CLINICIA
       query.isActive = status === 'active';
     }
 
+    if (req.query.department) {
+      query.department = req.query.department;
+    }
+
     const skip = (page - 1) * limit;
 
     const [employees, total] = await Promise.all([
       User.find(query)
-        .select('firstName lastName email department isActive createdAt lastAssessmentDate')
+        .select('firstName lastName email department departmentId isActive createdAt lastAssessmentDate assessmentSchedule')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parseInt(limit)),
@@ -72,13 +98,17 @@ router.get('/', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'CLINICIA
       requestId
     });
 
+    const mapped = employees.map(mapEmployeeResponse);
     res.json({
-      employees,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total,
-        pages: Math.ceil(total / limit)
+      success: true,
+      data: {
+        employees: mapped,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total,
+          pages: Math.ceil(total / limit)
+        }
       }
     });
   } catch (err) {
@@ -94,7 +124,7 @@ router.get('/', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'CLINICIA
 router.post('/', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN']), async (req, res) => {
   try {
     const { email, firstName, lastName, department } = req.body;
-    const userId = req.user._id;
+    const userId = req.user.userId;
     const userRole = req.user.role;
     const tenantId = req.user.tenantId;
     const requestId = req.requestId;
@@ -104,38 +134,38 @@ router.post('/', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN']), async 
     }
 
     // Check if employee already exists
-    const existing = await User.findOne({ email, tenantId });
+    const normalizedEmail = email.toLowerCase();
+    const existing = await User.findOne({ email: normalizedEmail, tenantId });
     if (existing) {
       return res.status(409).json({ error: 'Employee with this email already exists' });
     }
 
     // Generate temporary password
     const tempPassword = crypto.randomBytes(8).toString('hex');
-    const hashedPassword = await bcrypt.hash(tempPassword, 10);
-
     const employee = new User({
-      email,
+      email: normalizedEmail,
       firstName,
       lastName,
-      password: hashedPassword,
       role: 'EMPLOYEE',
       tenantId,
       department,
+      departmentId: department,
       isActive: true,
       createdBy: userId,
       createdAt: new Date()
     });
 
+    await employee.setPassword(tempPassword);
     await employee.save();
 
     // Send welcome email
-    const tenant = await Tenant.findById(tenantId);
+    const tenant = await Tenant.findOne({ tenantId });
     await emailService.sendWelcomeEmail({
       to: email,
       name: firstName,
       loginUrl: `${process.env.PLATFORM_URL}/login`,
       tempPassword,
-      companyName: tenant?.name || 'Vocalysis'
+      companyName: tenant?.displayName || tenant?.legalName || 'Vocalysis'
     }).catch(err => logger.error('Welcome email failed', { error: err.message }));
 
     await auditService.log({
@@ -153,13 +183,7 @@ router.post('/', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN']), async 
 
     res.status(201).json({
       message: 'Employee added successfully',
-      employee: {
-        id: employee._id,
-        email,
-        firstName,
-        lastName,
-        department
-      }
+      employee: mapEmployeeResponse(employee)
     });
   } catch (err) {
     logger.error('Failed to add employee', { error: err.message });
@@ -175,11 +199,11 @@ router.get('/:id', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'CLINI
   try {
     const { id } = req.params;
     const tenantId = req.user.tenantId;
-    const userId = req.user._id;
+    const userId = req.user.userId;
     const userRole = req.user.role;
     const requestId = req.requestId;
 
-    const employee = await User.findById(id).select('-password');
+    const employee = await User.findById(id).select('-passwordHash -salt');
 
     if (!employee || employee.tenantId.toString() !== tenantId.toString()) {
       return res.status(404).json({ error: 'Employee not found' });
@@ -208,12 +232,15 @@ router.get('/:id', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'CLINI
       requestId
     });
 
+    const empData = {
+      ...mapEmployeeResponse(employee),
+      joiningDate: employee.joiningDate || null,
+      assessmentCount,
+      lastAssessmentDate: lastAssessment?.createdAt || null,
+    };
     res.json({
-      employee,
-      stats: {
-        totalAssessments: assessmentCount,
-        lastAssessmentDate: lastAssessment?.createdAt || null
-      }
+      success: true,
+      data: empData
     });
   } catch (err) {
     logger.error('Failed to fetch employee', { error: err.message });
@@ -229,7 +256,7 @@ router.put('/:id', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN']), asyn
   try {
     const { id } = req.params;
     const { firstName, lastName, department, email } = req.body;
-    const userId = req.user._id;
+    const userId = req.user.userId;
     const userRole = req.user.role;
     const tenantId = req.user.tenantId;
     const requestId = req.requestId;
@@ -243,20 +270,24 @@ router.put('/:id', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN']), asyn
     const originalData = {
       firstName: employee.firstName,
       lastName: employee.lastName,
-      department: employee.department,
+      department: employee.department || employee.departmentId,
       email: employee.email
     };
 
     // Update fields
     if (firstName) employee.firstName = firstName;
     if (lastName) employee.lastName = lastName;
-    if (department) employee.department = department;
+    if (department) {
+      employee.department = department;
+      employee.departmentId = department;
+    }
     if (email && email !== employee.email) {
-      const existing = await User.findOne({ email, tenantId });
+      const normalizedEmail = email.toLowerCase();
+      const existing = await User.findOne({ email: normalizedEmail, tenantId });
       if (existing) {
         return res.status(409).json({ error: 'Email already in use' });
       }
-      employee.email = email;
+      employee.email = normalizedEmail;
     }
 
     await employee.save();
@@ -276,7 +307,7 @@ router.put('/:id', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN']), asyn
 
     res.json({
       message: 'Employee updated',
-      employee
+      employee: mapEmployeeResponse(employee)
     });
   } catch (err) {
     logger.error('Failed to update employee', { error: err.message });
@@ -292,7 +323,7 @@ router.delete('/:id', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN']), a
   try {
     const { id } = req.params;
     const { reason } = req.body;
-    const userId = req.user._id;
+    const userId = req.user.userId;
     const userRole = req.user.role;
     const tenantId = req.user.tenantId;
     const requestId = req.requestId;
@@ -338,7 +369,7 @@ router.get('/:id/sessions', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN
     const { id } = req.params;
     const { page = 1, limit = 20 } = req.query;
     const tenantId = req.user.tenantId;
-    const userId = req.user._id;
+    const userId = req.user.userId;
     const userRole = req.user.role;
     const requestId = req.requestId;
 
@@ -396,7 +427,7 @@ router.post('/bulk-import', requireAuth, requireRole(['COMPANY_ADMIN']), upload.
     }
 
     const tenantId = req.user.tenantId;
-    const userId = req.user._id;
+    const userId = req.user.userId;
     const userRole = req.user.role;
     const requestId = req.requestId;
     const batchId = crypto.randomUUID();
@@ -409,6 +440,7 @@ router.post('/bulk-import', requireAuth, requireRole(['COMPANY_ADMIN']), upload.
       userId,
       requestId
     }, {
+      jobId: batchId,
       attempts: 2,
       backoff: {
         type: 'exponential',
@@ -469,7 +501,8 @@ bulkImportQueue.process(async (job) => {
           continue;
         }
 
-        const existing = await User.findOne({ email, tenantId });
+        const normalizedEmail = email.toLowerCase();
+        const existing = await User.findOne({ email: normalizedEmail, tenantId });
         if (existing) {
           failed++;
           errors.push(`Row ${imported + failed}: Email already exists`);
@@ -477,21 +510,20 @@ bulkImportQueue.process(async (job) => {
         }
 
         const tempPassword = crypto.randomBytes(8).toString('hex');
-        const hashedPassword = await bcrypt.hash(tempPassword, 10);
-
         const employee = new User({
-          email,
+          email: normalizedEmail,
           firstName,
           lastName,
-          password: hashedPassword,
           role: 'EMPLOYEE',
           tenantId,
           department,
+          departmentId: department,
           isActive: true,
           createdBy: userId,
           createdAt: new Date()
         });
 
+        await employee.setPassword(tempPassword);
         await employee.save();
         imported++;
       } catch (err) {
@@ -569,7 +601,7 @@ router.post('/:id/invite', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN'
     const { id } = req.params;
     const { scheduledAt } = req.body;
     const tenantId = req.user.tenantId;
-    const userId = req.user._id;
+    const userId = req.user.userId;
     const requestId = req.requestId;
 
     const employee = await User.findById(id);
@@ -617,7 +649,7 @@ router.post('/:id/schedule', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMI
     const { id } = req.params;
     const { frequency, nextAssessmentDate } = req.body;
     const tenantId = req.user.tenantId;
-    const userId = req.user._id;
+    const userId = req.user.userId;
     const requestId = req.requestId;
 
     const employee = await User.findById(id);
@@ -649,6 +681,51 @@ router.post('/:id/schedule', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMI
   } catch (err) {
     logger.error('Failed to set schedule', { error: err.message });
     res.status(500).json({ error: 'Failed to set schedule' });
+  }
+});
+
+
+/**
+ * PATCH /employees/:id
+ * Quick partial update (e.g. toggle isActive)
+ */
+router.patch('/:id', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const tenantId = req.user.tenantId;
+    const userId   = req.user.userId;
+    const requestId = req.requestId;
+
+    const employee = await User.findById(id);
+    if (!employee || employee.tenantId.toString() !== tenantId.toString()) {
+      return res.status(404).json({ error: 'Employee not found' });
+    }
+
+    const allowedFields = ['isActive', 'department', 'phone'];
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) {
+        employee[field] = req.body[field];
+      }
+    }
+    await employee.save();
+
+    await auditService.log({
+      userId,
+      tenantId,
+      role: req.user.role,
+      action: 'EMPLOYEE_PATCHED',
+      targetResource: 'Employee',
+      targetId: id,
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+      requestId,
+      changeSnapshot: req.body
+    });
+
+    res.json({ message: 'Employee updated', employee: mapEmployeeResponse(employee) });
+  } catch (err) {
+    logger.error('Failed to patch employee', { error: err.message });
+    res.status(500).json({ error: 'Failed to update employee' });
   }
 });
 

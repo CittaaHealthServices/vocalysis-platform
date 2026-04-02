@@ -14,6 +14,11 @@ const alertEngine = require('../services/alertEngine');
 const pdfGenerator = require('../services/pdfGenerator');
 const Bull = require('bull');
 
+const isClinicianRole = (role) =>
+  role === 'CLINICIAN' || role === 'SENIOR_CLINICIAN' || role === 'CLINICAL_PSYCHOLOGIST';
+
+const mapTenantName = (tenant) => tenant?.displayName || tenant?.legalName || tenant?.name || 'Vocalysis';
+
 // Configure multer for audio uploads
 const storage = multer.memoryStorage();
 const upload = multer({
@@ -44,7 +49,7 @@ const assessmentQueue = new Bull('assessments', {
 router.post('/', requireAuth, requireRole(['EMPLOYEE', 'HR_ADMIN', 'CLINICIAN']), upload.single('audio'), async (req, res) => {
   try {
     const { employeeId, notes } = req.body;
-    const userId = req.user._id;
+    const userId = req.user.userId;
     const userRole = req.user.role;
     const tenantId = req.user.tenantId;
     const requestId = req.requestId;
@@ -69,7 +74,7 @@ router.post('/', requireAuth, requireRole(['EMPLOYEE', 'HR_ADMIN', 'CLINICIAN'])
     // Get employee and tenant
     const [employee, tenant] = await Promise.all([
       User.findById(targetEmployeeId),
-      Tenant.findById(tenantId)
+      Tenant.findOne({ tenantId })
     ]);
 
     if (!employee) {
@@ -93,6 +98,7 @@ router.post('/', requireAuth, requireRole(['EMPLOYEE', 'HR_ADMIN', 'CLINICIAN'])
     // Create session document
     const session = new Session({
       tenantId,
+      patientId: targetEmployeeId,
       employeeId: targetEmployeeId,
       createdBy: userId,
       audioFileName: req.file.originalname,
@@ -100,6 +106,14 @@ router.post('/', requireAuth, requireRole(['EMPLOYEE', 'HR_ADMIN', 'CLINICIAN'])
       audioFileSize: req.file.size,
       notes,
       status: 'processing',
+      audioMetadata: {
+        fileName: req.file.originalname,
+        mimeType: req.file.mimetype,
+        sizeBytes: req.file.size,
+        uploadedAt: new Date(),
+        processingStartedAt: new Date(),
+        processingStatus: 'processing'
+      },
       createdAt: new Date()
     });
 
@@ -159,7 +173,7 @@ router.post('/', requireAuth, requireRole(['EMPLOYEE', 'HR_ADMIN', 'CLINICIAN'])
   } catch (err) {
     logger.error('Failed to create session', { error: err.message });
     await auditService.log({
-      userId: req.user._id,
+      userId: req.user.userId,
       tenantId: req.user.tenantId,
       role: req.user.role,
       action: 'SESSION_CREATED',
@@ -189,7 +203,7 @@ assessmentQueue.process(async (job) => {
     // Extract features
     logger.info('Extracting audio features', { sessionId });
     const features = await featureExtractionService.extract(audioBuffer, audioFileName);
-    session.audioFeatures = features;
+    session.extractedFeatures = features;
 
     // Analyze with VocaCore
     logger.info('Running VocaCore analysis', { sessionId });
@@ -206,7 +220,7 @@ assessmentQueue.process(async (job) => {
     };
 
     // Evaluate for alerts
-    const tenant = await Tenant.findById(tenantId);
+    const tenant = await Tenant.findOne({ tenantId });
     const alertResult = await alertEngine.evaluateSession(session, tenant);
 
     if (alertResult.alertCreated) {
@@ -222,7 +236,7 @@ assessmentQueue.process(async (job) => {
           to: hrAdmin.email,
           alert: { alertLevel: alertResult.alertLevel, triggeringScores: [] },
           employee,
-          tenantName: tenant.name
+          tenantName: mapTenantName(tenant)
         }).catch(err => logger.error('Alert notification email failed', { error: err.message }));
       }
     }
@@ -230,6 +244,10 @@ assessmentQueue.process(async (job) => {
     // Mark session as complete
     session.status = 'completed';
     session.completedAt = new Date();
+    if (session.audioMetadata) {
+      session.audioMetadata.processingCompletedAt = new Date();
+      session.audioMetadata.processingStatus = 'completed';
+    }
     await session.save();
 
     logger.info('Assessment processing completed', { sessionId, alertCreated: alertResult.alertCreated });
@@ -275,7 +293,7 @@ assessmentQueue.process(async (job) => {
 router.get('/', requireAuth, async (req, res) => {
   try {
     const { page = 1, limit = 20, status, employeeId } = req.query;
-    const userId = req.user._id;
+    const userId = req.user.userId;
     const userRole = req.user.role;
     const tenantId = req.user.tenantId;
     const requestId = req.requestId;
@@ -285,7 +303,7 @@ router.get('/', requireAuth, async (req, res) => {
     // Filter by role
     if (userRole === 'EMPLOYEE') {
       query.employeeId = userId;
-    } else if (employeeId && (userRole === 'HR_ADMIN' || userRole === 'COMPANY_ADMIN' || userRole === 'CLINICIAN')) {
+    } else if (employeeId && (userRole === 'HR_ADMIN' || userRole === 'COMPANY_ADMIN' || isClinicianRole(userRole))) {
       query.employeeId = employeeId;
     }
 
@@ -338,7 +356,7 @@ router.get('/', requireAuth, async (req, res) => {
 router.get('/:id', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user._id;
+    const userId = req.user.userId;
     const userRole = req.user.role;
     const tenantId = req.user.tenantId;
     const requestId = req.requestId;
@@ -401,7 +419,7 @@ router.put('/:id/finalise', requireAuth, requireRole(['CLINICIAN', 'HR_ADMIN']),
   try {
     const { id } = req.params;
     const { clinicianNotes } = req.body;
-    const userId = req.user._id;
+    const userId = req.user.userId;
     const userRole = req.user.role;
     const tenantId = req.user.tenantId;
     const requestId = req.requestId;
@@ -429,7 +447,7 @@ router.put('/:id/finalise', requireAuth, requireRole(['CLINICIAN', 'HR_ADMIN']),
 
     // Generate PDF
     const clinician = await User.findById(userId);
-    const tenant = await Tenant.findById(tenantId);
+    const tenant = await Tenant.findOne({ tenantId });
 
     const pdfBuffer = await pdfGenerator.generateSessionReport(
       session,
@@ -473,7 +491,7 @@ router.put('/:id/finalise', requireAuth, requireRole(['CLINICIAN', 'HR_ADMIN']),
 router.get('/:id/report', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user._id;
+    const userId = req.user.userId;
     const userRole = req.user.role;
     const tenantId = req.user.tenantId;
 
@@ -498,7 +516,7 @@ router.get('/:id/report', requireAuth, async (req, res) => {
     }
 
     const clinician = await User.findById(session.createdBy);
-    const tenant = await Tenant.findById(tenantId);
+    const tenant = await Tenant.findOne({ tenantId });
 
     const pdfBuffer = await pdfGenerator.generateSessionReport(
       session,
@@ -524,7 +542,7 @@ router.delete('/:id', requireAuth, requireRole(['CITTAA_SUPER_ADMIN']), async (r
   try {
     const { id } = req.params;
     const { reason } = req.body;
-    const userId = req.user._id;
+    const userId = req.user.userId;
     const tenantId = req.user.tenantId;
     const requestId = req.requestId;
 
@@ -582,5 +600,74 @@ function _generateEmployeeRecommendations(results) {
 
   return recommendations;
 }
+
+
+/**
+ * GET /sessions/my
+ * Get current user's own sessions (for employee wellness view)
+ */
+router.get('/my', requireAuth, async (req, res) => {
+  try {
+    const { limit = 20, page = 1 } = req.query;
+    const userId   = req.user.userId;
+    const tenantId = req.user.tenantId;
+
+    const query = { employeeId: userId, tenantId, status: 'completed' };
+
+    const [sessions, total] = await Promise.all([
+      Session.find(query)
+        .select('status createdAt completedAt employeeWellnessOutput vocacoreResults assessmentType')
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(+limit),
+      Session.countDocuments(query),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        sessions,
+        pagination: { page: +page, limit: +limit, total, pages: Math.ceil(total / +limit) },
+      },
+    });
+  } catch (err) {
+    logger.error('Failed to fetch my sessions', { error: err.message });
+    res.status(500).json({ error: 'Failed to fetch sessions' });
+  }
+});
+
+/**
+ * GET /sessions/my/summary
+ * Get wellness summary for the current user
+ */
+router.get('/my/summary', requireAuth, async (req, res) => {
+  try {
+    const userId   = req.user.userId;
+    const tenantId = req.user.tenantId;
+
+    const [totalSessions, latestSession] = await Promise.all([
+      Session.countDocuments({ employeeId: userId, tenantId, status: 'completed' }),
+      Session.findOne({ employeeId: userId, tenantId, status: 'completed' })
+        .sort({ createdAt: -1 })
+        .select('employeeWellnessOutput createdAt completedAt'),
+    ]);
+
+    const latestScore = latestSession?.employeeWellnessOutput?.wellnessScore ?? null;
+    const riskLevel   = latestSession?.employeeWellnessOutput?.riskLevel   ?? 'LOW';
+
+    res.json({
+      success: true,
+      data: {
+        totalSessions,
+        latestScore,
+        riskLevel,
+        lastCheckInDate: latestSession?.completedAt || latestSession?.createdAt || null,
+      },
+    });
+  } catch (err) {
+    logger.error('Failed to fetch my summary', { error: err.message });
+    res.status(500).json({ error: 'Failed to fetch summary' });
+  }
+});
 
 module.exports = router;
