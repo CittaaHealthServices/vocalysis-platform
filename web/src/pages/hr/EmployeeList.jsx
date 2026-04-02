@@ -6,11 +6,22 @@ import api from '../../services/api'
 import toast from 'react-hot-toast'
 
 const ROLE_OPTIONS = [
-  { value: 'EMPLOYEE',       label: 'Employee' },
-  { value: 'HR_ADMIN',       label: 'HR Admin' },
-  { value: 'CLINICIAN',      label: 'Clinician' },
-  { value: 'COMPANY_ADMIN',  label: 'Company Admin' },
+  { value: '',                      label: 'All Roles' },
+  { value: 'EMPLOYEE',              label: 'Employee' },
+  { value: 'HR_ADMIN',              label: 'HR Admin' },
+  { value: 'CLINICAL_PSYCHOLOGIST', label: 'Psychologist' },
+  { value: 'SENIOR_CLINICIAN',      label: 'Senior Clinician' },
+  { value: 'COMPANY_ADMIN',         label: 'Company Admin' },
 ]
+
+const ROLE_LABEL = {
+  EMPLOYEE:              '👤 Employee',
+  HR_ADMIN:              '📋 HR Admin',
+  CLINICAL_PSYCHOLOGIST: '🧠 Psychologist',
+  SENIOR_CLINICIAN:      '🩺 Senior Clinician',
+  COMPANY_ADMIN:         '🏢 Company Admin',
+  CLINICIAN:             '🩺 Clinician',
+}
 
 const EMPTY_FORM = {
   firstName: '',
@@ -24,7 +35,7 @@ const EMPTY_FORM = {
 
 export const EmployeeList = () => {
   const navigate = useNavigate()
-  const [filters, setFilters] = useState({ department: '', status: '', search: '' })
+  const [filters, setFilters] = useState({ department: '', status: '', search: '', role: '' })
   const [addModalOpen, setAddModalOpen] = useState(false)
   const [adding, setAdding] = useState(false)
   const [form, setForm] = useState(EMPTY_FORM)
@@ -43,7 +54,7 @@ export const EmployeeList = () => {
     },
     { key: 'email', label: 'Email' },
     { key: 'department', label: 'Department', render: (row) => row.department || '—' },
-    { key: 'role', label: 'Role', render: (row) => ROLE_OPTIONS.find(r => r.value === row.role)?.label || row.role },
+    { key: 'role', label: 'Role', render: (row) => ROLE_LABEL[row.role] || row.role },
     {
       key: 'isActive',
       label: 'Status',
@@ -130,11 +141,16 @@ export const EmployeeList = () => {
 
       {/* Filters */}
       <Card className="p-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Input
             placeholder="Search by name or email…"
             value={filters.search}
             onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+          />
+          <Select
+            options={ROLE_OPTIONS}
+            value={filters.role}
+            onChange={(val) => setFilters({ ...filters, role: val })}
           />
           <Select
             options={[

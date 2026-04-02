@@ -36,9 +36,17 @@ router.get('/', requireAuth, requireRole(EMP_VIEW_ROLES), async (req, res) => {
     const userRole = req.user.role;
     const requestId = req.requestId;
 
+    // Show all team members in the tenant.
+    // Exclude only platform-level super admins (CITTAA_SUPER_ADMIN / CITTAA_CEO)
+    // so that Cittaa's own HR can see psychologists, HR staff, employees, etc.
+    // Corporate tenants (Tata Steel etc.) can still filter to EMPLOYEE-only via ?role=EMPLOYEE
+    const roleFilter = req.query.role
+      ? req.query.role.split(',')
+      : { $nin: ['CITTAA_SUPER_ADMIN', 'CITTAA_CEO'] };
+
     let query = {
       tenantId,
-      role: 'EMPLOYEE'
+      role: roleFilter,
     };
 
     if (search) {
