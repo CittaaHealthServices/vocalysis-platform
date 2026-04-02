@@ -47,6 +47,7 @@ const defaultOrigins = [
   'http://localhost:3000',
   'http://localhost:5173',
   'https://striking-bravery-production-c13e.up.railway.app',
+  'https://vocalysis-platform-production.up.railway.app',
   'https://vocalysis.cittaa.in',
   'https://app.vocalysis.cittaa.in',
 ];
@@ -132,10 +133,15 @@ app.use('/outcomes', outcomesRoutes);
 
 // ÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂ DEV SEED (temporary ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ creates test users for all roles) ÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂ
 const _seedRouter = express.Router();
-_seedRouter.post('/', async (req, res) => {
+
+// Allow GET so it can be triggered directly from the browser address bar.
+// GET: /dev/seed?secret=cittaa-seed-2024
+// POST: body { "secret": "cittaa-seed-2024" }
+const _runSeed = async (req, res) => {
+  const secret = req.body?.secret || req.query?.secret;
   try {
-    if (req.body?.secret !== 'cittaa-seed-2024') {
-      return res.status(403).json({ error: 'forbidden' });
+    if (secret !== 'cittaa-seed-2024') {
+      return res.status(403).json({ error: 'forbidden – pass ?secret=cittaa-seed-2024' });
     }
 
     const User   = require('./models/User');
@@ -255,7 +261,10 @@ _seedRouter.post('/', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
-});
+};
+
+_seedRouter.get('/',  _runSeed);
+_seedRouter.post('/', _runSeed);
 app.use('/dev/seed', _seedRouter);
 
 // ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Scheduling (HR view of upcoming assessments + consultations this week) ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ
