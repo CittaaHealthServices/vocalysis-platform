@@ -192,6 +192,42 @@ _seedRouter.post('/', async (req, res) => {
     for (const u of cittaaUsers)  await upsert(u, cittaaTenantId);
     for (const u of legacyUsers)  await upsert(u, fallbackTenantId);
 
+    // ── Tata Steel demo tenant ─────────────────────────────────────────────
+    const trialStart = new Date();
+    const trialEnd   = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
+    let tataTenant = await Tenant.findOne({ tenantId: 'tata-steel-demo' });
+    if (!tataTenant) {
+      tataTenant = await Tenant.create({
+        tenantId:               'tata-steel-demo',
+        displayName:            'Tata Steel',
+        legalName:              'Tata Steel Limited',
+        type:                   'corporate',
+        industry:               'Steel & Mining',
+        contactEmail:           'wellness@tatasteel.com',
+        contractTier:           'enterprise',
+        monthlyAssessmentQuota: 50,
+        employeeCount:          50,
+        status:                 'trial',
+        contractStartDate:      trialStart,
+        contractEndDate:        trialEnd,
+        trial: { isActive: true, startDate: trialStart, endDate: trialEnd, durationDays: 90, maxUsers: 55 },
+        featureFlags: {
+          hrDashboard: true, employeeSelfService: true, apiAccess: false,
+          whiteLabel: false, customBranding: false, advancedAnalytics: true,
+          bulkImport: true, googleIntegration: false,
+        },
+      });
+    }
+    const tataTenantId = tataTenant.tenantId;
+    const tataUsers = [
+      { email: 'admin@tatasteel-demo.vocalysis.in',        password: 'TataDemo@Admin2026!',  role: 'COMPANY_ADMIN',         firstName: 'Tata Steel',  lastName: 'Admin'         },
+      { email: 'hr1@tatasteel-demo.vocalysis.in',          password: 'TataDemo@HR2026!',     role: 'HR_ADMIN',              firstName: 'Wellness',    lastName: 'Manager'       },
+      { email: 'hr2@tatasteel-demo.vocalysis.in',          password: 'TataDemo@HR2_2026!',   role: 'HR_ADMIN',              firstName: 'HR',          lastName: 'Coordinator'   },
+      { email: 'psychologist@tatasteel-demo.vocalysis.in', password: 'TataDemo@Psych2026!',  role: 'CLINICAL_PSYCHOLOGIST', firstName: 'Demo',        lastName: 'Psychologist'  },
+      { email: 'employee.demo@tatasteel-demo.vocalysis.in',password: 'TataDemo@Emp2026!',    role: 'EMPLOYEE',              firstName: 'Demo',        lastName: 'Employee'      },
+    ];
+    for (const u of tataUsers) await upsert(u, tataTenantId);
+
     res.json({ success: true, seeded: results.length, users: results });
   } catch (err) {
     res.status(500).json({ error: err.message });
