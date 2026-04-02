@@ -62,6 +62,7 @@ import AuditLog from '../pages/cittaa-admin/AuditLog'
 import ErrorLog from '../pages/cittaa-admin/ErrorLog'
 import TrialManagement from '../pages/cittaa-admin/TrialManagement'
 import Psychologists from '../pages/cittaa-admin/Psychologists'
+import EscalationManagement from '../pages/cittaa-admin/EscalationManagement'
 
 // CEO Pages
 import CEODashboard from '../pages/ceo/CEODashboard'
@@ -357,6 +358,10 @@ const router = createBrowserRouter([
       {
         path: 'psychologists',
         element: <Psychologists />,
+      },
+      {
+        path: 'escalations',
+        element: <EscalationManagement />,
       },
     ],
   },

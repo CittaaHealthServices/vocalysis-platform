@@ -216,6 +216,169 @@ router.get('/departments', requireAuth, requireRole(ANALYTICS_ROLES), async (req
 });
 
 /**
+ * GET /analytics/clinical-deep
+ * Deep psychologist analytics: dimension scores, VocoScale™ tier distributions,
+ * employee risk matrix, department heatmap, 12-week trend per dimension.
+ * Access: SENIOR_CLINICIAN, CLINICAL_PSYCHOLOGIST, HR_ADMIN, COMPANY_ADMIN, admins
+ */
+router.get('/clinical-deep', requireAuth, requireRole(ANALYTICS_ROLES), async (req, res) => {
+  try {
+    const tenantId = req.user.tenantId;
+    const userId   = (req.user.userId || req.user._id);
+    const { weeks = 12 } = req.query;
+
+    const fromDate = new Date();
+    fromDate.setDate(fromDate.getDate() - (parseInt(weeks) * 7));
+
+    // ── 1. Weekly dimension trends (depression / anxiety / stress + wellness) ─
+    const dimensionTrends = await Session.aggregate([
+      { $match: { tenantId, status: 'completed', createdAt: { $gte: fromDate } } },
+      { $group: {
+          _id: { $dateToString: { format: '%Y-%U', date: '$createdAt' } }, // year-week
+          weekStart:   { $min: '$createdAt' },
+          count:       { $sum: 1 },
+          avgDep:      { $avg: '$vocacoreResults.dimensionalScores.depression' },
+          avgAnx:      { $avg: '$vocacoreResults.dimensionalScores.anxiety' },
+          avgStr:      { $avg: '$vocacoreResults.dimensionalScores.stress' },
+          avgWellness: { $avg: '$employeeWellnessOutput.wellnessScore' },
+          // VocoScale™ averages
+          avgPHQ9:     { $avg: '$vocacoreResults.standardScales.phq9.score' },
+          avgGAD7:     { $avg: '$vocacoreResults.standardScales.gad7.score' },
+          avgPSS10:    { $avg: '$vocacoreResults.standardScales.pss10.score' },
+      }},
+      { $sort: { '_id': 1 } },
+    ]);
+
+    // ── 2. PHQ-9 tier distribution ────────────────────────────────────────────
+    const phq9Dist = await Session.aggregate([
+      { $match: { tenantId, status: 'completed', 'vocacoreResults.standardScales.phq9.tier': { $exists: true } } },
+      { $group: { _id: '$vocacoreResults.standardScales.phq9.tier', count: { $sum: 1 } } },
+    ]);
+
+    // ── 3. GAD-7 tier distribution ────────────────────────────────────────────
+    const gad7Dist = await Session.aggregate([
+      { $match: { tenantId, status: 'completed', 'vocacoreResults.standardScales.gad7.tier': { $exists: true } } },
+      { $group: { _id: '$vocacoreResults.standardScales.gad7.tier', count: { $sum: 1 } } },
+    ]);
+
+    // ── 4. PSS-10 tier distribution ───────────────────────────────────────────
+    const pss10Dist = await Session.aggregate([
+      { $match: { tenantId, status: 'completed', 'vocacoreResults.standardScales.pss10.tier': { $exists: true } } },
+      { $group: { _id: '$vocacoreResults.standardScales.pss10.tier', count: { $sum: 1 } } },
+    ]);
+
+    // ── 5. Risk level distribution ────────────────────────────────────────────
+    const riskDist = await Session.aggregate([
+      { $match: { tenantId, status: 'completed' } },
+      { $group: { _id: '$vocacoreResults.overallRiskLevel', count: { $sum: 1 } } },
+    ]);
+
+    // ── 6. Department heatmap (avg scores per dept) ───────────────────────────
+    const deptHeatmap = await Session.aggregate([
+      { $match: { tenantId, status: 'completed' } },
+      { $lookup: { from: 'users', localField: 'patientId', foreignField: '_id', as: 'user' } },
+      { $unwind: { path: '$user', preserveNullAndEmpty: true } },
+      { $group: {
+          _id: { $ifNull: ['$user.department', 'Unspecified'] },
+          count:       { $sum: 1 },
+          avgDep:      { $avg: '$vocacoreResults.dimensionalScores.depression' },
+          avgAnx:      { $avg: '$vocacoreResults.dimensionalScores.anxiety' },
+          avgStr:      { $avg: '$vocacoreResults.dimensionalScores.stress' },
+          avgWellness: { $avg: '$employeeWellnessOutput.wellnessScore' },
+          highRisk:    { $sum: { $cond: [{ $in: ['$vocacoreResults.overallRiskLevel', ['red', 'orange']] }, 1, 0] } },
+      }},
+      { $sort: { avgWellness: 1 } },
+      { $limit: 10 },
+    ]);
+
+    // ── 7. Top at-risk employees (for psychologist view, anonymised for HR) ───
+    const atRiskEmployees = await Session.aggregate([
+      { $match: {
+          tenantId, status: 'completed',
+          'vocacoreResults.overallRiskLevel': { $in: ['red', 'orange'] },
+      }},
+      { $sort: { createdAt: -1 } },
+      { $group: {
+          _id: '$patientId',
+          latestRisk:    { $first: '$vocacoreResults.overallRiskLevel' },
+          latestDep:     { $first: '$vocacoreResults.dimensionalScores.depression' },
+          latestAnx:     { $first: '$vocacoreResults.dimensionalScores.anxiety' },
+          latestStr:     { $first: '$vocacoreResults.dimensionalScores.stress' },
+          latestWellness:{ $first: '$employeeWellnessOutput.wellnessScore' },
+          latestPHQ9:    { $first: '$vocacoreResults.standardScales.phq9.score' },
+          latestGAD7:    { $first: '$vocacoreResults.standardScales.gad7.score' },
+          latestPSS10:   { $first: '$vocacoreResults.standardScales.pss10.score' },
+          lastSeen:      { $first: '$createdAt' },
+          sessionCount:  { $sum: 1 },
+      }},
+      { $limit: 20 },
+    ]);
+
+    // Populate employee names
+    const enrichedAtRisk = await Promise.all(atRiskEmployees.map(async (e) => {
+      const emp = await User.findById(e._id).select('firstName lastName email department').lean().catch(() => null);
+      return {
+        ...e,
+        name:       emp ? `${emp.firstName || ''} ${emp.lastName || ''}`.trim() : 'Unknown',
+        email:      emp?.email,
+        department: emp?.department,
+      };
+    }));
+
+    // ── 8. Summary stats ──────────────────────────────────────────────────────
+    const [totalAssessed, highRiskCount, avgWellnessArr] = await Promise.all([
+      Session.countDocuments({ tenantId, status: 'completed' }),
+      Session.countDocuments({ tenantId, status: 'completed', 'vocacoreResults.overallRiskLevel': { $in: ['red', 'orange'] } }),
+      Session.aggregate([
+        { $match: { tenantId, status: 'completed' } },
+        { $group: { _id: null, avg: { $avg: '$employeeWellnessOutput.wellnessScore' } } },
+      ]),
+    ]);
+
+    await auditService.log({
+      userId,
+      tenantId,
+      role: req.user.role,
+      action: 'CLINICAL_DEEP_ANALYTICS_VIEWED',
+      targetResource: 'Analytics',
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+    });
+
+    res.json({
+      success: true,
+      data: {
+        summary: {
+          totalAssessed,
+          highRiskCount,
+          highRiskPct: totalAssessed > 0 ? ((highRiskCount / totalAssessed) * 100).toFixed(1) : 0,
+          avgWellness: (avgWellnessArr[0]?.avg || 0).toFixed(1),
+        },
+        dimensionTrends: dimensionTrends.map(d => ({
+          week:        d._id,
+          weekStart:   d.weekStart,
+          count:       d.count,
+          depression:  Math.round(d.avgDep  || 0),
+          anxiety:     Math.round(d.avgAnx  || 0),
+          stress:      Math.round(d.avgStr  || 0),
+          wellness:    Math.round(d.avgWellness || 0),
+          phq9:        Math.round(d.avgPHQ9  || 0),
+          gad7:        Math.round(d.avgGAD7  || 0),
+          pss10:       Math.round(d.avgPSS10 || 0),
+        })),
+        scaleDistributions: { phq9: phq9Dist, gad7: gad7Dist, pss10: pss10Dist },
+        riskDistribution: riskDist,
+        departmentHeatmap: deptHeatmap,
+        atRiskEmployees: enrichedAtRisk,
+      },
+    });
+  } catch (err) {
+    logger.error('Failed to get clinical-deep analytics', { error: err.message });
+    res.status(500).json({ error: 'Failed to get clinical analytics' });
+  }
+});
+
+/**
  * GET /analytics/platform
  * Platform-wide statistics (CITTAA_SUPER_ADMIN only)
  */

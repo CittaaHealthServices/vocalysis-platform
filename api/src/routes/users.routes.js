@@ -48,14 +48,18 @@ router.patch('/me', requireAuth, async (req, res) => {
 // GET /users ÃÂ¢ÃÂÃÂ list users in tenant (admin/hr only)
 //   Super admins may pass ?tenantId=xxx to list users for any tenant
 // ============================================================================
-router.get('/', requireAuth, requireRole(['COMPANY_ADMIN', 'HR_ADMIN', 'CITTAA_SUPER_ADMIN']), async (req, res) => {
+router.get('/', requireAuth, requireRole(['COMPANY_ADMIN', 'HR_ADMIN', 'CITTAA_SUPER_ADMIN', 'CITTAA_CEO', 'SENIOR_CLINICIAN', 'CLINICAL_PSYCHOLOGIST']), async (req, res) => {
   try {
-    const isSuperAdmin = req.user.role === 'CITTAA_SUPER_ADMIN';
+    const isSuperAdmin = ['CITTAA_SUPER_ADMIN', 'CITTAA_CEO'].includes(req.user.role);
     // Super admins can specify a target tenantId; others are scoped to their own
     const targetTenantId = (isSuperAdmin && req.query.tenantId) ? req.query.tenantId : req.user.tenantId;
     const { role, page = 1, limit = 50, search } = req.query;
     const query = { tenantId: targetTenantId };
-    if (role) query.role = role;
+    // Support comma-separated roles e.g. role=SENIOR_CLINICIAN,CLINICAL_PSYCHOLOGIST
+    if (role) {
+      const roles = role.split(',').map(r => r.trim()).filter(Boolean);
+      query.role = roles.length === 1 ? roles[0] : { $in: roles };
+    }
     if (search) {
       const re = new RegExp(search, 'i');
       query.$or = [{ firstName: re }, { lastName: re }, { email: re }];

@@ -149,6 +149,35 @@ const sessionSchema = new mongoose.Schema(
       },
       // Biomarker findings — 5 acoustic dimensions with clinical interpretation
       // Written by worker audioAnalysis.js, returned to employee-facing UI
+      // VocoScale™ — Cittaa's acoustic-derived standard scale scores
+      standardScales: {
+        phq9: {
+          score:    Number,
+          maxScore: Number,
+          tier:     String,
+          label:    String,
+          fullName: String,
+          interpretation: String,
+        },
+        gad7: {
+          score:    Number,
+          maxScore: Number,
+          tier:     String,
+          label:    String,
+          fullName: String,
+          interpretation: String,
+        },
+        pss10: {
+          score:    Number,
+          maxScore: Number,
+          tier:     String,
+          label:    String,
+          fullName: String,
+          interpretation: String,
+        },
+        clinicalFlag: String,
+        methodology:  String,
+      },
       biomarkerFindings: {
         pitch: {
           finding:  String,

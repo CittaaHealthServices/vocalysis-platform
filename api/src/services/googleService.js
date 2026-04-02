@@ -59,15 +59,18 @@ class GoogleService {
       }
     }
 
-    // Fallback: generate a deterministic room code from the consultationId
-    const seed = consultationId || `room-${Date.now()}`;
-    const hash = Buffer.from(seed).toString('base64').replace(/[^a-z]/gi, '').toLowerCase();
-    const code = `${hash.slice(0, 3)}-${hash.slice(3, 7)}-${hash.slice(7, 10)}`;
+    // Fallback: use Jitsi Meet — fully public, no-auth, always works
+    // Room names follow the pattern: vocalysis-{sanitized-id}-{random}
+    const seed    = (consultationId || `room-${Date.now()}`).replace(/[^a-zA-Z0-9]/g, '');
+    const randSfx = Math.random().toString(36).slice(2, 7);
+    const roomId  = `vocalysis-${seed.slice(0, 16)}-${randSfx}`;
+    const jitsiLink = `https://meet.jit.si/${roomId}`;
+    logger.info('Using Jitsi Meet fallback', { roomId });
     return {
-      meetLink: `https://meet.google.com/${code}`,
-      meetId:   code,
+      meetLink: jitsiLink,
+      meetId:   roomId,
       spaceId:  null,
-      source:   'fallback',
+      source:   'jitsi-fallback',
     };
   }
 
