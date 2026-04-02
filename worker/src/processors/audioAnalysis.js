@@ -12,10 +12,11 @@ function _riskLevel(dep, anx, str) {
   return 'green';
 }
 
-function _wellnessLevel(str) {
-  if (str > 75) return 'in_crisis';
-  if (str > 55) return 'at_risk';
-  if (str > 30) return 'healthy';
+function _wellnessLevel(score) {
+  // score here is the wellness score (0-100), not a raw distress dimension
+  if (score < 35) return 'in_crisis';
+  if (score < 55) return 'at_risk';
+  if (score < 75) return 'healthy';
   return 'thriving';
 }
 
@@ -303,9 +304,18 @@ module.exports = async function audioAnalysisProcessor(job) {
     }
 
     // ── Step 2: Build canonical result fields ─────────────────────────────────
-    const riskLevel         = _riskLevel(dep, anx, str);
-    const wellnessScore     = Math.round((100 - str) * 0.6 + confScore * 0.4);
-    const wellnessLevel     = _wellnessLevel(str);
+    const riskLevel = _riskLevel(dep, anx, str);
+
+    // Wellness score — weighted across all three dimensions.
+    // Depression carries most weight (most impactful on functioning),
+    // then anxiety, then acute stress.
+    // Clipped to [0, 100] and confidence-adjusted slightly.
+    const rawDistress   = dep * 0.45 + anx * 0.35 + str * 0.20;
+    const peakDistress  = Math.max(dep, anx, str);
+    // Use the higher of weighted vs peak to prevent masking by other low scores
+    const distress      = Math.max(rawDistress, peakDistress * 0.75);
+    const wellnessScore = Math.round(Math.max(0, Math.min(100, 100 - distress)));
+    const wellnessLevel = _wellnessLevel(wellnessScore);
     const recs              = _generateRecs(dep, anx, str);
     const biomarkerFindings = _biomarkerFindings(featuresData);
 
