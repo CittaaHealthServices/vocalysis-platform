@@ -64,7 +64,19 @@ class GoogleService {
     const seed    = (consultationId || `room-${Date.now()}`).replace(/[^a-zA-Z0-9]/g, '');
     const randSfx = Math.random().toString(36).slice(2, 7);
     const roomId  = `vocalysis-${seed.slice(0, 16)}-${randSfx}`;
-    const jitsiLink = `https://meet.jit.si/${roomId}`;
+
+    // Hash config params:
+    //   lobby.enabled=false      → skip "waiting for moderator" screen
+    //   prejoinPageEnabled=false → skip the pre-join device-check page
+    //   startWithAudioMuted=false & startWithVideoMuted=false → open with AV on
+    const jitsiConfig = [
+      'config.lobby.enabled=false',
+      'config.prejoinPageEnabled=false',
+      'config.startWithAudioMuted=false',
+      'config.startWithVideoMuted=false',
+    ].join('&');
+    const jitsiLink = `https://meet.jit.si/${roomId}#${jitsiConfig}`;
+
     logger.info('Using Jitsi Meet fallback', { roomId });
     return {
       meetLink: jitsiLink,
