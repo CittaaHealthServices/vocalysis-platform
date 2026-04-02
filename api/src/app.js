@@ -182,14 +182,10 @@ const _runSeed = async (req, res) => {
       { email: 'khushi@cittaa.in',     password: 'Khushi@Cittaa2026!',     role: 'CLINICAL_PSYCHOLOGIST', firstName: 'Khushi',     lastName: 'Chatterjee' },
       { email: 'jessica@cittaa.in',    password: 'Jessica@Cittaa2026!',    role: 'CLINICAL_PSYCHOLOGIST', firstName: 'Jessica',    lastName: 'Patni'      },
       { email: 'yashswini@cittaa.in',  password: 'Yashswini@Cittaa2026!',  role: 'CLINICAL_PSYCHOLOGIST', firstName: 'Yashswini',  lastName: 'Pulgar'     },
-      // Cittaa Employees — internal team with employee wellness access
-      { email: 'sairam.emp@cittaa.in',  password: 'Sairam@Emp2026!',   role: 'EMPLOYEE', firstName: 'Sairam',   lastName: 'Vocalysis' },
-      { email: 'abhijay.emp@cittaa.in', password: 'Abhijay@Emp2026!',  role: 'EMPLOYEE', firstName: 'Abhijay',  lastName: 'Cittaa'    },
-      { email: 'pratya.emp@cittaa.in',  password: 'Pratya@Emp2026!',   role: 'EMPLOYEE', firstName: 'Pratya',   lastName: 'Cittaa'    },
-      { email: 'emp1@cittaa.in',        password: 'Emp1@Cittaa2026!',  role: 'EMPLOYEE', firstName: 'Aarav',    lastName: 'Sharma'    },
-      { email: 'emp2@cittaa.in',        password: 'Emp2@Cittaa2026!',  role: 'EMPLOYEE', firstName: 'Priya',    lastName: 'Nair'      },
-      { email: 'emp3@cittaa.in',        password: 'Emp3@Cittaa2026!',  role: 'EMPLOYEE', firstName: 'Rohan',    lastName: 'Mehta'     },
     ];
+    // NOTE: Cittaa admins/CEO/psychologists access the employee wellness view
+    // via their main email — no separate employee accounts needed.
+    // They click "My Wellness ✨" in the sidebar to switch views.
 
     // ── Fallback: also create legacy test users on first available tenant ─
     const fallbackTenant = await Tenant.findOne({}).lean();

@@ -4,7 +4,7 @@ import {
   BarChart3, Users, Settings, AlertCircle, BookOpen, Clock,
   Home, FileText, Key, Activity, TrendingUp, Video,
   DollarSign, Building2, HeartPulse, LogOut, FlaskConical, Brain,
-  BrainCircuit, Award, ShieldAlert,
+  BrainCircuit, Award, ShieldAlert, Sparkles, ArrowLeft,
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 
@@ -31,6 +31,7 @@ const SIDEBAR_ITEMS = {
     { label: 'Health Monitor',    path: '/cittaa-admin/health',           icon: Activity    },
     { label: 'Audit Log',         path: '/cittaa-admin/audit-log',        icon: FileText    },
     { label: 'Error Log',         path: '/cittaa-admin/errors',           icon: AlertCircle },
+    { label: 'My Wellness ✨',    path: '/my',                            icon: Sparkles, divider: true },
   ],
   CITTAA_CEO: [
     { label: 'Executive Overview', path: '/ceo',                          icon: BarChart3     },
@@ -38,6 +39,7 @@ const SIDEBAR_ITEMS = {
     { label: 'Client Health',      path: '/ceo',                          icon: Building2     },
     { label: 'Trial Management',   path: '/cittaa-admin/trials',          icon: FlaskConical  },
     { label: 'Escalations',        path: '/cittaa-admin/escalations',     icon: ShieldAlert   },
+    { label: 'My Wellness ✨',     path: '/my',                           icon: Sparkles, divider: true },
   ],
   COMPANY_ADMIN: [
     { label: 'Company Overview', path: '/company',            icon: Home      },
@@ -75,6 +77,7 @@ const SIDEBAR_ITEMS = {
     { label: 'Analytics',      path: '/clinical/analytics',        icon: TrendingUp },
     { label: 'Consultations',  path: '/clinical/consultations',    icon: Clock      },
     { label: 'Protocol Guide', path: '/clinical/protocol',         icon: BookOpen   },
+    { label: 'My Wellness ✨', path: '/my',                        icon: Sparkles, divider: true },
   ],
   EAP_PROVIDER: [
     { label: 'EAP Hub',        path: '/eap', icon: Home    },
@@ -92,12 +95,36 @@ const SIDEBAR_ITEMS = {
   ],
 }
 
+// Employee nav items shown when any role visits /my/*
+const EMPLOYEE_NAV = [
+  { label: 'Home',          path: '/my',               icon: Home       },
+  { label: 'Check-in',      path: '/my/check-in',      icon: HeartPulse },
+  { label: 'History',       path: '/my/history',       icon: BarChart3  },
+  { label: 'Resources',     path: '/my/resources',     icon: BookOpen   },
+  { label: 'Consultations', path: '/my/consultations', icon: Clock      },
+  { label: 'Profile',       path: '/my/profile',       icon: Settings   },
+]
+
+// Role → their "home" path for the back button
+const ROLE_HOME = {
+  CITTAA_SUPER_ADMIN: '/cittaa-admin',
+  CITTAA_CEO:         '/ceo',
+  HR_ADMIN:           '/hr',
+  COMPANY_ADMIN:      '/company',
+  CLINICAL_PSYCHOLOGIST: '/clinical',
+  SENIOR_CLINICIAN:   '/clinical',
+}
+
 export const Sidebar = ({ mobileOpen, setMobileOpen }) => {
   const { user, logout } = useAuth()
   const location = useLocation()
   const navigate  = useNavigate()
 
-  const items = SIDEBAR_ITEMS[user?.role] || []
+  // If any non-employee role is browsing /my/* → switch to wellness nav
+  const isWellnessView = location.pathname.startsWith('/my') && user?.role !== 'EMPLOYEE'
+  const items = isWellnessView
+    ? EMPLOYEE_NAV
+    : (SIDEBAR_ITEMS[user?.role] || [])
   const roleLabel = ROLE_LABELS[user?.role] || (user?.role || '').replace(/_/g, ' ')
 
   const isActive = (path) =>
@@ -151,24 +178,41 @@ export const Sidebar = ({ mobileOpen, setMobileOpen }) => {
 
         {/* Nav items */}
         <div className="flex-1 overflow-y-auto p-3 space-y-0.5">
+
+          {/* Back to main view banner (shown only in wellness mode for non-employees) */}
+          {isWellnessView && (
+            <button
+              onClick={() => { navigate(ROLE_HOME[user?.role] || '/'); setMobileOpen(false) }}
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-violet-600 bg-violet-50 hover:bg-violet-100 transition-all mb-2"
+            >
+              <ArrowLeft style={{ width: '14px', height: '14px' }} />
+              Back to {ROLE_LABELS[user?.role] || 'Dashboard'}
+            </button>
+          )}
+
           {items.map((item) => {
             const Icon  = item.icon
             const active = isActive(item.path)
             return (
-              <button
-                key={item.label + item.path}
-                onClick={() => { navigate(item.path); setMobileOpen(false) }}
-                className={clsx(
-                  'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all',
-                  active
-                    ? 'bg-violet-50 text-violet-700 font-semibold'
-                    : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800'
+              <div key={item.label + item.path}>
+                {/* Optional divider before "My Wellness" link */}
+                {item.divider && !isWellnessView && (
+                  <div className="my-2 border-t border-gray-100" />
                 )}
-              >
-                <Icon className={clsx('w-4.5 h-4.5 flex-shrink-0', active ? 'text-violet-600' : 'text-gray-400')} style={{ width: '18px', height: '18px' }} />
-                <span className="truncate">{item.label}</span>
-                {active && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-violet-500 flex-shrink-0" />}
-              </button>
+                <button
+                  onClick={() => { navigate(item.path); setMobileOpen(false) }}
+                  className={clsx(
+                    'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all',
+                    active
+                      ? 'bg-violet-50 text-violet-700 font-semibold'
+                      : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800'
+                  )}
+                >
+                  <Icon className={clsx('flex-shrink-0', active ? 'text-violet-600' : 'text-gray-400')} style={{ width: '18px', height: '18px' }} />
+                  <span className="truncate">{item.label}</span>
+                  {active && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-violet-500 flex-shrink-0" />}
+                </button>
+              </div>
             )
           })}
         </div>

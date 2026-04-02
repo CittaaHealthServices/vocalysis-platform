@@ -244,11 +244,12 @@ const router = createBrowserRouter([
     ],
   },
 
-  // Employee Routes
+  // Employee Routes — also accessible by Cittaa CEO and Super Admins
+  // so they can experience the wellness view with their own email
   {
     path: '/my',
     element: (
-      <ProtectedRoute requiredRoles={[ROLES.EMPLOYEE]}>
+      <ProtectedRoute requiredRoles={[ROLES.EMPLOYEE, ROLES.CITTAA_SUPER_ADMIN, ROLES.CITTAA_CEO, ROLES.HR_ADMIN, ROLES.COMPANY_ADMIN, ROLES.CLINICAL_PSYCHOLOGIST, ROLES.SENIOR_CLINICIAN]}>
         <AppLayout />
       </ProtectedRoute>
     ),
