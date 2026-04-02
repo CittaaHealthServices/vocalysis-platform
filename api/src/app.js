@@ -40,9 +40,32 @@ app.use(helmet());
 app.use(cookieParser());
 
 // CORS configuration
-const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:3000').split(',');
+// CORS_ORIGINS env var can be comma-separated list in Railway.
+// The Railway web service URL is included as a hardcoded fallback so
+// the frontend works even before CORS_ORIGINS is set in the dashboard.
+const defaultOrigins = [
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'https://striking-bravery-production-c13e.up.railway.app',
+  'https://vocalysis.cittaa.in',
+  'https://app.vocalysis.cittaa.in',
+];
+const envOrigins = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(',').map(o => o.trim())
+  : [];
+const allowedOrigins = [...new Set([...defaultOrigins, ...envOrigins])];
+
 app.use(cors({
-  origin: allowedOrigins,
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, Postman, server-to-server)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    // In development, allow all localhost origins
+    if (process.env.NODE_ENV !== 'production' && /^https?:\/\/localhost/.test(origin)) {
+      return callback(null, true);
+    }
+    callback(new Error(`CORS: origin ${origin} not allowed`));
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID']
