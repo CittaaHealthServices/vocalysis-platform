@@ -1,6 +1,7 @@
 const axios = require('axios');
 const FormData = require('form-data');
 const logger = require('../logger');
+const trendService = require('../services/trendService');
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -778,6 +779,44 @@ module.exports = async function audioAnalysisProcessor(job) {
       } catch (waErr) {
         logger.warn('[outcome] WhatsApp/follow-up setup failed (non-fatal): %s', waErr.message);
       }
+    }
+
+    // ── Step 7.5: Longitudinal Trend Scoring ────────────────────────────────────
+    // Compute week-over-week biomarker drift and flag pre-alert deteriorations.
+    // This runs AFTER the session is saved to MongoDB so computeTrend() can
+    // read it along with the employee's history.
+    try {
+      const trend = await trendService.computeTrend(patientId, tenantId, sessionDoc);
+
+      // Persist trend snapshot onto the session document for fast retrieval
+      await Session.findByIdAndUpdate(sessionDoc._id, {
+        $set: {
+          trendData: {
+            overall:            trend.trendLabels?.overall,
+            velocity:           trend.velocity,
+            deltas:             trend.deltas,
+            baselineAvg:        trend.baselineAvg,
+            preAlert:           trend.preAlert,
+            preAlertDimensions: trend.preAlertDimensions,
+            preAlertSeverity:   trend.preAlertSeverity,
+            sessionCount:       trend.sessionCount,
+            computedAt:         new Date(),
+          },
+        },
+      });
+
+      // Create a pre-alert in the Alert collection if deterioration is significant
+      if (trend.preAlert) {
+        await trendService.maybeCreatePreAlert(sessionDoc, trend);
+        logger.info('[trend] Pre-alert created — %s deterioration detected for session %s (dims: %s)',
+          trend.preAlertSeverity, sessionId, trend.preAlertDimensions.join(', '));
+      } else {
+        logger.info('[trend] Trend computed — %s (velocity: %s) for session %s',
+          trend.trendLabels?.overall, trend.velocity, sessionId);
+      }
+    } catch (trendErr) {
+      // Non-fatal — trend failure must not block session completion
+      logger.warn('[trend] Trend computation failed (non-fatal): %s', trendErr.message);
     }
 
     // ── Step 8: Notify VocoCore of completed session ──────────────────────────

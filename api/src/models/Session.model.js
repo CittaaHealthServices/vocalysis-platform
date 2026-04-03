@@ -352,6 +352,42 @@ const sessionSchema = new mongoose.Schema(
   }
 );
 
+// ── Trend data — written by worker after computeTrend() ───────────────────────
+// Stored directly on the session for fast retrieval without re-aggregation
+const trendDataBlock = {
+  overall:            String,  // 'stable' | 'deteriorating' | 'rapid_deterioration' | 'improving' | 'insufficient_data'
+  velocity:           String,  // 'accelerating_decline' | 'steady' | 'accelerating_improvement' | 'unknown'
+  deltas: {
+    depression: Number,
+    anxiety:    Number,
+    stress:     Number,
+    wellness:   Number,
+  },
+  baselineAvg: {
+    depression: Number,
+    anxiety:    Number,
+    stress:     Number,
+    wellness:   Number,
+  },
+  preAlert:            Boolean,
+  preAlertDimensions: [String],
+  preAlertSeverity:   String,  // 'warning' | 'urgent'
+  sessionCount:       Number,
+  computedAt:         Date,
+};
+// Attach as a subdoc field (not a separate schema so it stays lightweight)
+// eslint-disable-next-line no-undef
+if (!('trendData' in require('./Session').schema?.paths || {})) {
+  // Guard against re-definition on hot-reload; the field is declared below
+}
+
+sessionSchema.add({
+  trendData: {
+    type: Object,
+    default: null,
+  },
+});
+
 sessionSchema.index({ tenantId: 1, sessionDate: -1 });
 sessionSchema.index({ tenantId: 1, patientId: 1, sessionDate: -1 });
 sessionSchema.index({ tenantId: 1, 'vocacoreResults.overallRiskLevel': 1 });

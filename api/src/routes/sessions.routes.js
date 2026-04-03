@@ -12,6 +12,7 @@ const featureExtractionService = require('../services/featureExtractionService')
 const vocacoreEngine = require('../services/vocacoreEngine');
 const alertEngine = require('../services/alertEngine');
 const pdfGenerator = require('../services/pdfGenerator');
+const trendService = require('../services/trendService');
 const Bull = require('bull');
 
 // Configure multer for audio uploads
