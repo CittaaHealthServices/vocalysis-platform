@@ -1,0 +1,148 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-primary: #6B21A8;
+  --color-primary-light: #9333EA;
+  --color-primary-dark: #581C87;
+  --color-secondary: #0EA5E9;
+  --color-success: #22C55E;
+  --color-warning: #F59E0B;
+  --color-danger: #EF4444;
+  --color-bg: #F8F7FF;
+  --color-text: #1E1B2E;
+  --color-border: #E5E3F0;
+  --color-muted: #9F97AF;
+}
+
+* {
+  @apply text-app;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-app-bg text-app font-sans antialiased;
+  font-feature-settings: "rlig" 1, "calt" 1;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  @apply w-2 h-2;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-app-bg;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-cittaa-300 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-cittaa-400;
+}
+
+/* Global animation classes */
+.fade-in {
+  animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.slide-in-up {
+  animation: slideInUp 0.4s ease-out;
+}
+
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Form styling */
+@layer components {
+  .input-base {
+    @apply w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cittaa-600 focus:border-transparent transition;
+  }
+
+  .btn-base {
+    @apply inline-flex items-center justify-center px-4 py-2 rounded-lg font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-primary {
+    @apply btn-base bg-cittaa-700 text-white hover:bg-cittaa-800 active:bg-cittaa-900;
+  }
+
+  .btn-secondary {
+    @apply btn-base bg-gray-100 text-app hover:bg-gray-200;
+  }
+
+  .btn-danger {
+    @apply btn-base bg-red-600 text-white hover:bg-red-700;
+  }
+
+  .card-base {
+    @apply bg-white rounded-xl border border-gray-100 shadow-sm;
+  }
+
+  .glass-effect {
+    @apply bg-white/80 backdrop-blur-md border border-white/20;
+  }
+
+  .section-title {
+    @apply text-2xl font-bold text-app;
+  }
+
+  .subsection-title {
+    @apply text-lg font-semibold text-app;
+  }
+}
+
+/* Utility classes */
+.truncate-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.truncate-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Loading skeleton */
+.skeleton {
+  @apply bg-gray-200 animate-pulse rounded;
+}
+
+/* Responsive typography */
+@media (max-width: 640px) {
+  .section-title {
+    @apply text-xl;
+  }
+
+  .subsection-title {
+    @apply text-base;
+  }
+}

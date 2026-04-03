@@ -1,0 +1,15 @@
+# FIX: Changed from NIXPACKS to DOCKERFILE
+# NIXPACKS doesn't install ffmpeg/libsndfile — the Dockerfile does.
+# Without ffmpeg, librosa/pydub cannot process audio files (MP3, WAV, etc.)
+# This was causing all audio analysis to fail silently.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+startCommand = "gunicorn app:app --workers 2 --worker-class gthread --threads 4 --timeout 120 --bind 0.0.0.0:$PORT"
+healthcheckPath = "/health"
+healthcheckTimeout = 60
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
