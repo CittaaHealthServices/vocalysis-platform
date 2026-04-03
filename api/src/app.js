@@ -123,6 +123,12 @@ app.use('/analytics', analyticsRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/tenants', tenantRoutes);
 app.use('/api/tenants', tenantRoutes);
+app.use('/cittaa-admin', cittaaAdminRoutes);
+app.use('/api/cittaa-admin', cittaaAdminRoutes);
+app.use('/audio', audioRoutes);
+app.use('/api/audio', audioRoutes);
+app.use('/users', usersRoutes);
+app.use('/api/users', usersRoutes);
 
 // ============================================================================
 // DOCUMENTATION & ADMIN ROUTES
