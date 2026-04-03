@@ -9,6 +9,7 @@ const User = require('../models/User');
 const Session = require('../models/Session');
 const Alert = require('../models/Alert');
 const logger = require('../utils/logger');
+const emailService = require('../services/emailService');
 
 // All routes require super admin
 const superAdmin = [requireAuth, requireRole(['CITTAA_SUPER_ADMIN', 'CITTAA_CEO'])];
@@ -485,6 +486,141 @@ router.get('/member-usage', ...superAdmin, async (req, res) => {
   } catch (err) {
     logger.error('cittaa-admin member-usage error', { error: err.message });
     res.status(500).json({ success: false, error: { message: 'Failed to fetch member usage' } });
+  }
+});
+
+
+// ============================================================================
+// B2C INDIVIDUAL REGISTRATIONS — approve / reject / list
+// ============================================================================
+
+/**
+ * GET /cittaa-admin/b2c-registrations
+ * List all individual (B2C) registrations, default to pending ones
+ */
+router.get('/b2c-registrations', ...superAdmin, async (req, res) => {
+  try {
+    const { status = 'pending', page = 1, limit = 50 } = req.query;
+    const query = { accountType: 'b2c' };
+    if (status !== 'all') query.approvalStatus = status;
+
+    const skip = (Number(page) - 1) * Number(limit);
+    const [users, total] = await Promise.all([
+      User.find(query)
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(Number(limit))
+          .select('firstName lastName email accountType approvalStatus approvedAt approvedBy rejectedAt rejectionReason isActive createdAt')
+          .lean(),
+      User.countDocuments(query),
+    ]);
+
+    res.json({
+      success: true,
+      data: users.map(u => ({
+        id:              u._id,
+        firstName:       u.firstName,
+        lastName:        u.lastName,
+        email:           u.email,
+        approvalStatus:  u.approvalStatus,
+        isActive:        u.isActive,
+        registeredAt:    u.createdAt,
+        approvedAt:      u.approvedAt  || null,
+        approvedBy:      u.approvedBy  || null,
+        rejectedAt:      u.rejectedAt  || null,
+        rejectionReason: u.rejectionReason || null,
+      })),
+      meta: { total, page: Number(page), limit: Number(limit), pages: Math.ceil(total / Number(limit)) },
+    });
+  } catch (err) {
+    logger.error('b2c-registrations list error', { error: err.message });
+    res.status(500).json({ success: false, error: { message: 'Failed to fetch B2C registrations' } });
+  }
+});
+
+/**
+ * POST /cittaa-admin/b2c-registrations/:userId/approve
+ * Approve a pending B2C registration — activates the account
+ */
+router.post('/b2c-registrations/:userId/approve', ...superAdmin, async (req, res) => {
+  try {
+    const user = await User.findById(req.params.userId);
+    if (!user) return res.status(404).json({ success: false, error: { message: 'User not found' } });
+    if (user.accountType !== 'b2c') return res.status(400).json({ success: false, error: { message: 'Not a B2C account' } });
+    if (user.approvalStatus === 'approved') return res.status(400).json({ success: false, error: { message: 'Already approved' } });
+
+    user.approvalStatus = 'approved';
+    user.isActive       = true;
+    user.approvedAt     = new Date();
+    user.approvedBy     = req.user?.userId || req.user?._id?.toString() || 'admin';
+    user.rejectionReason = null;
+    user.rejectedAt      = null;
+    await user.save();
+
+    // Email the user their account is approved
+    emailService.sendB2CApprovalEmail({
+      to:       user.email,
+      name:     user.firstName,
+      loginUrl: `${process.env.PLATFORM_URL || 'https://mind.cittaa.in'}/login`,
+    }).catch(err => logger.error('B2C approval email failed', { error: err.message }));
+
+    logger.info('B2C account approved', { userId: user._id, approvedBy: user.approvedBy });
+    res.json({ success: true, message: `Account approved and activated for ${user.email}` });
+  } catch (err) {
+    logger.error('b2c approve error', { error: err.message });
+    res.status(500).json({ success: false, error: { message: 'Failed to approve registration' } });
+  }
+});
+
+/**
+ * POST /cittaa-admin/b2c-registrations/:userId/reject
+ * Reject a pending B2C registration
+ * Body: { reason: string }
+ */
+router.post('/b2c-registrations/:userId/reject', ...superAdmin, async (req, res) => {
+  try {
+    const { reason } = req.body;
+    const user = await User.findById(req.params.userId);
+    if (!user) return res.status(404).json({ success: false, error: { message: 'User not found' } });
+    if (user.accountType !== 'b2c') return res.status(400).json({ success: false, error: { message: 'Not a B2C account' } });
+    if (user.approvalStatus === 'approved') return res.status(400).json({ success: false, error: { message: 'Already approved — cannot reject' } });
+
+    user.approvalStatus  = 'rejected';
+    user.isActive        = false;
+    user.rejectedAt      = new Date();
+    user.rejectionReason = reason || null;
+    await user.save();
+
+    // Email the user the rejection
+    emailService.sendB2CRejectionEmail({
+      to:     user.email,
+      name:   user.firstName,
+      reason: reason || null,
+    }).catch(err => logger.error('B2C rejection email failed', { error: err.message }));
+
+    logger.info('B2C account rejected', { userId: user._id, reason });
+    res.json({ success: true, message: `Registration rejected for ${user.email}` });
+  } catch (err) {
+    logger.error('b2c reject error', { error: err.message });
+    res.status(500).json({ success: false, error: { message: 'Failed to reject registration' } });
+  }
+});
+
+/**
+ * GET /cittaa-admin/b2c-registrations/stats
+ * Summary counts for the admin badge/dashboard
+ */
+router.get('/b2c-registrations/stats', ...superAdmin, async (req, res) => {
+  try {
+    const [pending, approved, rejected, total] = await Promise.all([
+      User.countDocuments({ accountType: 'b2c', approvalStatus: 'pending' }),
+      User.countDocuments({ accountType: 'b2c', approvalStatus: 'approved' }),
+      User.countDocuments({ accountType: 'b2c', approvalStatus: 'rejected' }),
+      User.countDocuments({ accountType: 'b2c' }),
+    ]);
+    res.json({ success: true, data: { pending, approved, rejected, total } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: { message: 'Failed to fetch stats' } });
   }
 });
 

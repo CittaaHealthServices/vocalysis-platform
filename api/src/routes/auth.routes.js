@@ -95,40 +95,56 @@ router.post('/register/self', async (req, res) => {
 
     const existing = await User.findOne({ email: email.toLowerCase() });
     if (existing) {
-      return res.status(409).json({ success: false, error: { message: 'An account with this email already exists' } });
+      // Friendly message that tells the user what to do
+      const isPending  = existing.approvalStatus === 'pending';
+      const isRejected = existing.approvalStatus === 'rejected';
+      const msg = isPending
+        ? 'Your account is already registered and awaiting approval. We will email you once it is approved.'
+        : isRejected
+          ? 'Your registration was not approved. Please contact support@cittaa.in for more information.'
+          : 'An account with this email already exists. Please sign in instead.';
+      return res.status(409).json({ success: false, error: { message: msg } });
     }
 
-    // Individual users belong to a shared 'individual' tenant
+    // ── B2C individual flow — requires internal Cittaa approval ──────────
     const individualTenantId = process.env.INDIVIDUAL_TENANT_ID || 'individual';
 
     const newUser = new User({
-      email:       email.toLowerCase(),
-      firstName:   firstName.trim(),
-      lastName:    lastName.trim(),
-      role:        'EMPLOYEE',
-      tenantId:    individualTenantId,
-      isActive:    true,
+      email:          email.toLowerCase(),
+      firstName:      firstName.trim(),
+      lastName:       lastName.trim(),
+      role:           'EMPLOYEE',
+      tenantId:       individualTenantId,
+      accountType:    'b2c',
+      approvalStatus: 'pending',
+      isActive:       false,          // disabled until Cittaa admin approves
       isEmailVerified: false,
-      loginAttempts: 0,
-      consentRecord: { consentGiven: false, dataProcessingConsent: false },
+      loginAttempts:  0,
+      consentRecord:  { consentGiven: false, dataProcessingConsent: false },
       notificationPreferences: { emailAlerts: true, inAppAlerts: true },
     });
     await newUser.setPassword(password);
     await newUser.save();
 
-    // Send welcome email (non-blocking)
-    emailService.sendWelcomeEmail({
-      to: email,
-      name: firstName,
-      loginUrl: `${process.env.PLATFORM_URL || 'https://striking-bravery-production-c13e.up.railway.app'}/login`,
-      companyName: 'Vocalysis',
-    }).catch(err => logger.error('Self-registration welcome email failed', { error: err.message }));
+    // Notify Cittaa admins of new B2C registration (non-blocking)
+    emailService.sendB2CRegistrationAlert({
+      user: { firstName: firstName.trim(), lastName: lastName.trim(), email: email.toLowerCase() },
+      userId: newUser._id.toString(),
+    }).catch(err => logger.error('B2C admin registration alert failed', { error: err.message }));
+
+    // Let the user know their application is pending
+    emailService.sendB2CPendingNotification({
+      to: email.toLowerCase(),
+      name: firstName.trim(),
+    }).catch(err => logger.error('B2C pending notification email failed', { error: err.message }));
+
+    logger.info('B2C self-registration pending approval', { userId: newUser._id, email: email.toLowerCase() });
 
     res.status(201).json({
       success: true,
       data: {
-        user: safeUser(newUser),
-        message: 'Account created successfully. You can now log in.',
+        status: 'pending_approval',
+        message: 'Your account has been registered. Our team will review your application and you will receive an email once approved.',
       },
     });
   } catch (err) {
@@ -279,7 +295,26 @@ router.post('/login', async (req, res) => {
     }
 
     if (!user.isActive) {
-      return res.status(403).json({ success: false, message: 'Account is deactivated' });
+      // Give a helpful message for B2C pending/rejected accounts
+      if (user.accountType === 'b2c') {
+        if (user.approvalStatus === 'pending') {
+          return res.status(403).json({
+            success: false,
+            code: 'APPROVAL_PENDING',
+            message: 'Your account is pending approval. You will receive an email once it has been reviewed by our team.',
+          });
+        }
+        if (user.approvalStatus === 'rejected') {
+          return res.status(403).json({
+            success: false,
+            code: 'ACCOUNT_REJECTED',
+            message: user.rejectionReason
+              ? `Your registration was not approved: ${user.rejectionReason}`
+              : 'Your registration was not approved. Please contact support@cittaa.in.',
+          });
+        }
+      }
+      return res.status(403).json({ success: false, message: 'Account is deactivated. Please contact support.' });
     }
 
     // MFA check

@@ -603,6 +603,108 @@ async function sendAlertEscalationNotification({ to, alert, employee, reason }) 
   return sendEmail({ to, subject, html, urgent: true, text: `ESCALATED: ${employee.firstName} ${employee.lastName}\n${PLATFORM_URL}/alerts/${alert._id}` });
 }
 
+
+/* ─── B2C Registration Emails ────────────────────────────────────────────── */
+
+/**
+ * sendB2CRegistrationAlert — fired when a new individual registers on mind.cittaa.in
+ * Sent to Cittaa admins (ALERT_EMAIL_TO) with approve/reject action context
+ */
+async function sendB2CRegistrationAlert({ user, userId }) {
+  const adminEmails = (process.env.ALERT_EMAIL_TO || '')
+    .split(',').map(e => e.trim()).filter(Boolean);
+  if (!adminEmails.length) {
+    logger.warn('sendB2CRegistrationAlert: ALERT_EMAIL_TO not set — skipping');
+    return;
+  }
+
+  const subject = `[Vocalysis] New individual registration — ${user.firstName} ${user.lastName}`;
+  const approveUrl = `${PLATFORM_URL}/cittaa-admin/b2c-registrations`;
+
+  const html = wrapHtml(`
+    ${mkTopBar()}
+    ${mkHero('New B2C Registration', 'An individual has signed up on mind.cittaa.in', { emoji: '&#128100;', from: B.p700, to: B.p900 })}
+    ${mkSectionLabel('Applicant Details')}
+    ${mkInfoCard([
+      { label: 'Name',       value: `${user.firstName} ${user.lastName}` },
+      { label: 'Email',      value: user.email },
+      { label: 'Submitted',  value: toIST(new Date()) },
+      { label: 'Flow',       value: 'B2C — Individual (requires approval)' },
+    ])}
+    ${mkCallout({ type: 'info', html: 'This registration is <strong>pending your approval</strong>. The user cannot log in until you approve their account.' })}
+    ${mkButton(approveUrl, 'Review Registrations &rarr;')}
+    ${mkFooter()}
+  `);
+
+  for (const to of adminEmails) {
+    await sendEmail({ to, subject, html,
+      text: `New B2C registration from ${user.firstName} ${user.lastName} (${user.email}). Review at ${approveUrl}`
+    }).catch(err => logger.error('sendB2CRegistrationAlert failed', { to, error: err.message }));
+  }
+}
+
+/**
+ * sendB2CPendingNotification — sent to the user immediately after they register
+ * Lets them know their account is under review
+ */
+async function sendB2CPendingNotification({ to, name }) {
+  const subject = 'Your Vocalysis account is under review';
+  const html = wrapHtml(`
+    ${mkTopBar()}
+    ${mkHero('Application Received!', 'We are reviewing your account', { emoji: '&#128338;', from: B.teal, to: B.tealDk })}
+    ${mkBody(`
+      ${mkP(`Hi ${name},`)}
+      ${mkP(`Thank you for signing up for <strong>Vocalysis</strong> — AI-powered wellness insights.`)}
+      ${mkP(`Your application has been received and is currently under review by our team. We typically review applications within <strong>1–2 business days</strong>.`)}
+      ${mkP(`You will receive an email at this address as soon as your account is approved and ready to use.`)}
+    `)}
+    ${mkCallout({ type: 'info', html: 'If you have any questions in the meantime, please reach out to <a href="mailto:support@cittaa.in" style="color:${B.p700}">support@cittaa.in</a>.' })}
+    ${mkFooter()}
+  `);
+  return sendEmail({ to, subject, html, text: `Hi ${name}, your Vocalysis account is under review. We'll email you once it's approved.` });
+}
+
+/**
+ * sendB2CApprovalEmail — sent to user when Cittaa admin approves their account
+ */
+async function sendB2CApprovalEmail({ to, name, loginUrl }) {
+  const url = loginUrl || `${PLATFORM_URL}/login`;
+  const subject = '🎉 Your Vocalysis account is approved!';
+  const html = wrapHtml(`
+    ${mkTopBar()}
+    ${mkHero('You're approved!', 'Your wellness journey starts now', { emoji: '&#127881;', from: B.green, to: B.greenDk })}
+    ${mkBody(`
+      ${mkP(`Hi ${name},`)}
+      ${mkP(`Great news — your Vocalysis account has been <strong>approved</strong> by our team!`)}
+      ${mkP(`You can now sign in and begin your personalised wellness journey using our AI-powered voice biomarker analysis.`)}
+    `)}
+    ${mkButton(url, 'Sign In to Vocalysis &rarr;', { from: B.green, to: B.greenDk })}
+    ${mkCallout({ type: 'success', html: '&#127381; <strong>Your first wellness check-in is waiting.</strong> It takes just 5 minutes and is completely confidential.' })}
+    ${mkFooter()}
+  `);
+  return sendEmail({ to, subject, html, text: `Hi ${name}, your Vocalysis account is approved! Sign in at ${url}` });
+}
+
+/**
+ * sendB2CRejectionEmail — sent to user when Cittaa admin rejects their account
+ */
+async function sendB2CRejectionEmail({ to, name, reason }) {
+  const subject = 'Regarding your Vocalysis registration';
+  const html = wrapHtml(`
+    ${mkTopBar()}
+    ${mkHero('Registration Update', 'Regarding your account application', { emoji: '&#128203;', from: B.amber, to: B.amberDk })}
+    ${mkBody(`
+      ${mkP(`Hi ${name},`)}
+      ${mkP(`Thank you for your interest in Vocalysis.`)}
+      ${mkP(`After reviewing your registration, we are unable to approve your account at this time.`)}
+      ${reason ? mkCallout({ type: 'warning', html: `<strong>Reason:</strong> ${reason}` }) : ''}
+      ${mkP(`If you believe this is a mistake or would like to discuss further, please contact us at <a href="mailto:support@cittaa.in" style="color:${B.p700}">support@cittaa.in</a> and we will be happy to help.`)}
+    `)}
+    ${mkFooter()}
+  `);
+  return sendEmail({ to, subject, html, text: `Hi ${name}, we were unable to approve your Vocalysis registration. ${reason ? 'Reason: ' + reason : ''} Contact support@cittaa.in for help.` });
+}
+
 /* ─────────────────────────────────────────────────────────────────────────── */
 module.exports = {
   sendEmail,
@@ -617,6 +719,11 @@ module.exports = {
   sendConsultationReminder,
   sendAlertEscalationNotification,
   sendMemberActivityNotification,
+  // B2C individual registration
+  sendB2CRegistrationAlert,
+  sendB2CPendingNotification,
+  sendB2CApprovalEmail,
+  sendB2CRejectionEmail,
 };
 
 /* ─── Cittaa Admin: member activity notification ─────────────────────────── */

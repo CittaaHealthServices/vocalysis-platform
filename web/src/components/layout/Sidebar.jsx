@@ -4,7 +4,7 @@ import {
   BarChart3, Users, Settings, AlertCircle, BookOpen, Clock,
   Home, FileText, Key, Activity, TrendingUp, Video,
   DollarSign, Building2, HeartPulse, LogOut, FlaskConical, Brain,
-  BrainCircuit, Award, ShieldAlert, Sparkles, ArrowLeft,
+  BrainCircuit, Award, ShieldAlert, Sparkles, ArrowLeft, UserCheck,
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 
@@ -22,6 +22,7 @@ const ROLE_LABELS = {
 const SIDEBAR_ITEMS = {
   CITTAA_SUPER_ADMIN: [
     { label: 'Platform Overview', path: '/cittaa-admin',                  icon: BarChart3   },
+    { label: 'B2C Registrations',  path: '/cittaa-admin/b2c-registrations', icon: UserCheck   },
     { label: 'Tenants',           path: '/cittaa-admin/tenants',          icon: Building2   },
     { label: 'Psychologists',     path: '/cittaa-admin/psychologists',    icon: Brain       },
     { label: 'Escalations',       path: '/cittaa-admin/escalations',      icon: ShieldAlert },

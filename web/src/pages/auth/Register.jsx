@@ -22,6 +22,7 @@ export default function Register() {
   const [errs, setErrs] = useState({})
   const [showPass, setShowPass] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
 
   const set = (field) => (e) => {
     setVals(v => ({ ...v, [field]: e.target.value }))
@@ -62,14 +63,65 @@ export default function Register() {
         email:     vals.email.trim().toLowerCase(),
         password:  vals.password,
       })
-      toast.success('Account created! Please sign in.')
-      navigate('/login')
+      setSubmitted(true)   // show pending-approval screen
     } catch (err) {
       const msg = err?.error?.message || err?.message || 'Registration failed'
       toast.error(msg)
     } finally {
       setLoading(false)
     }
+  }
+
+
+  // ── Pending approval screen ───────────────────────────────────────────────
+  if (submitted) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-50 via-white to-purple-50 p-6">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.5 }}
+          className="w-full max-w-md text-center"
+        >
+          <div className="w-20 h-20 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center mx-auto mb-6 shadow-lg shadow-purple-200">
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
+            >
+              <Shield className="w-10 h-10 text-white" />
+            </motion.div>
+          </div>
+
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Application Submitted!</h2>
+          <p className="text-gray-500 mb-6 leading-relaxed">
+            Thank you for signing up for <strong>Vocalysis</strong>. Your account is currently
+            <span className="text-violet-700 font-semibold"> under review </span>
+            by our team. We'll send you an email at
+            <span className="text-gray-800 font-medium"> {vals.email} </span>
+            once it's approved.
+          </p>
+
+          <div className="bg-violet-50 border border-violet-200 rounded-2xl p-4 mb-6 text-left space-y-2">
+            {[
+              '✅ Application received successfully',
+              '📧 Check your inbox for a confirmation email',
+              '⏱️ Typical review time: 1–2 business days',
+              '🔔 You'll be notified by email when approved',
+            ].map(s => (
+              <p key={s} className="text-sm text-violet-800">{s}</p>
+            ))}
+          </div>
+
+          <p className="text-sm text-gray-400">
+            Questions?{' '}
+            <a href="mailto:support@cittaa.in" className="text-violet-600 hover:text-violet-700 font-medium">
+              support@cittaa.in
+            </a>
+          </p>
+        </motion.div>
+      </div>
+    )
   }
 
   return (

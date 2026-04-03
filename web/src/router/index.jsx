@@ -52,6 +52,7 @@ import MyConsultations from '../pages/employee/MyConsultations'
 
 // Cittaa Admin Pages
 import CittaaAdminOverview from '../pages/cittaa-admin/Overview'
+import B2CRegistrations from '../pages/cittaa-admin/B2CRegistrations'
 import TenantList from '../pages/cittaa-admin/TenantList'
 import TenantDetail from '../pages/cittaa-admin/TenantDetail'
 import OnboardWizard from '../pages/cittaa-admin/OnboardWizard'
@@ -363,6 +364,10 @@ const router = createBrowserRouter([
       {
         path: 'escalations',
         element: <EscalationManagement />,
+      },
+      {
+        path: 'b2c-registrations',
+        element: <B2CRegistrations />,
       },
     ],
   },

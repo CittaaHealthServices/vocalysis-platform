@@ -106,6 +106,24 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+
+    // ── B2C / Individual account fields ───────────────────────────────────
+    accountType: {
+      type:    String,
+      enum:    ['b2b', 'b2c'],
+      default: 'b2b',
+    },
+    approvalStatus: {
+      type:    String,
+      enum:    ['not_required', 'pending', 'approved', 'rejected'],
+      default: 'not_required',
+    },
+    approvedBy:       { type: String, default: null },   // userId of admin who approved
+    approvedAt:       { type: Date,   default: null },
+    rejectedAt:       { type: Date,   default: null },
+    rejectionReason:  { type: String, default: null },
+    // ──────────────────────────────────────────────────────────────────────
+
     isEmailVerified: {
       type: Boolean,
       default: false,
