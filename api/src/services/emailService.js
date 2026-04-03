@@ -672,7 +672,7 @@ async function sendB2CApprovalEmail({ to, name, loginUrl }) {
   const subject = '🎉 Your Vocalysis account is approved!';
   const html = wrapHtml(`
     ${mkTopBar()}
-    ${mkHero('You're approved!', 'Your wellness journey starts now', { emoji: '&#127881;', from: B.green, to: B.greenDk })}
+    ${mkHero('You\u2019re approved!', 'Your wellness journey starts now', { emoji: '&#127881;', from: B.green, to: B.greenDk })}
     ${mkBody(`
       ${mkP(`Hi ${name},`)}
       ${mkP(`Great news — your Vocalysis account has been <strong>approved</strong> by our team!`)}
