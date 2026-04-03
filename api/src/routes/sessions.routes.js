@@ -156,7 +156,9 @@ router.post('/', requireAuth, requireRole(['EMPLOYEE', 'HR_ADMIN', 'CLINICIAN'])
         patientId: targetEmployeeId,
         clinicianId: userRole !== 'EMPLOYEE' ? userId : undefined,
         userId,
-        requestId
+        requestId,
+        // Pass user's language preference for per-language ML calibration in VocaCore
+        languageHint: employee?.languagePreference || null,
       }, {
         attempts: 3,
         backoff: {

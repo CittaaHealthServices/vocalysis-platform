@@ -209,7 +209,7 @@ class VocaCoreEngine {
    * @param {string} filename     original filename (for mime detection)
    * @returns {Promise<object>}   canonical result shape
    */
-  async analyzeAudio(audioBuffer, filename) {
+  async analyzeAudio(audioBuffer, filename, languageHint = null) {
     if (!this._vocacoreUrl) {
       logger.warn('VOCOCORE_SERVICE_URL not set — falling back to Gemini / deterministic');
       // No audio-based features available; use deterministic fallback
@@ -220,6 +220,8 @@ class VocaCoreEngine {
     try {
       const form = new FormData();
       form.append('audio', audioBuffer, { filename: filename || 'audio.wav' });
+      // Pass language hint from user profile to improve per-language calibration
+      if (languageHint) form.append('language_hint', languageHint);
 
       const response = await axios.post(
         `${this._vocacoreUrl}/score`,

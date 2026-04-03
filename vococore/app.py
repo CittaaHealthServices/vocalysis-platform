@@ -18,6 +18,7 @@ from auto_retrain import (
     start_scheduler, stop_scheduler, get_history,
     get_scheduler_info, trigger_now,
 )
+from language_detector import detect_language, apply_language_calibration
 
 
 # Configure logging - no audio content or feature values logged
@@ -96,11 +97,12 @@ def create_app():
 
         Expected request:
         - Content-Type: multipart/form-data
-        - Field: 'audio' (file upload)
+        - Field: 'audio'         (file upload, required)
+        - Field: 'language_hint' (optional ISO code: hi|te|ta|kn|en-in|mr|bn|gu|ml|pa)
         - Header: X-VocoCore-Internal-Key
 
         Returns:
-        - 200: { success: true, features, scores, meta }
+        - 200: { success: true, features, scores, meta, language }
         - 400/500: error response
         """
         start_time = time.time()
@@ -110,8 +112,9 @@ def create_app():
                 'code': 'MISSING_AUDIO', 'message': 'No audio file provided'
             }}), 400
 
-        audio_file = request.files['audio']
-        filename = audio_file.filename or 'unknown'
+        audio_file    = request.files['audio']
+        filename      = audio_file.filename or 'unknown'
+        language_hint = request.form.get('language_hint', '').strip() or None
 
         try:
             audio_bytes = audio_file.read()
@@ -120,7 +123,7 @@ def create_app():
                     'code': 'EMPTY_FILE', 'message': 'Audio file is empty'
                 }}), 400
 
-            logger.info(f'Score request: {filename} ({len(audio_bytes)} bytes)')
+            logger.info(f'Score request: {filename} ({len(audio_bytes)} bytes) language_hint={language_hint}')
 
             # Quality check
             quality_result = quality_checker.check(audio_bytes, filename)
@@ -134,12 +137,27 @@ def create_app():
             audio_array  = quality_result['audio_array']
             sample_rate  = quality_result['sample_rate']
             features     = feature_extractor.extract(audio_array, sample_rate)
+
+            # ── Language auto-detection ──────────────────────────────────────
+            # Detects language from acoustic patterns + explicit hint from client.
+            # Result is passed to scorer and returned in meta so the API can
+            # store it on the Session document for accurate clinical reporting.
+            lang_result = detect_language(audio_array, sample_rate, language_hint)
+            lang_code   = lang_result['language']
+            # Apply per-language norm calibration offsets to features
+            features_calibrated = apply_language_calibration(features, lang_result)
+            logger.info(
+                f"Language: {lang_result['display_name']} ({lang_code}) "
+                f"via {lang_result['method']} conf={lang_result['confidence']:.2f}"
+            )
+            # ────────────────────────────────────────────────────────────────
+
             del audio_array, audio_bytes
 
-            # ML inference (primary)
+            # ML inference (primary) — use calibrated features
             if ml_scorer.is_loaded:
                 try:
-                    scores = ml_scorer.score(features)
+                    scores = ml_scorer.score(features_calibrated)
                     scorer_used = 'ml_ensemble_v2'
                     logger.info(
                         f"ML score: {scores['ml_class']} "
@@ -147,11 +165,11 @@ def create_app():
                     )
                 except Exception as ml_err:
                     logger.warning(f"ML scorer failed ({ml_err}), using fallback")
-                    scores = fallback_scorer.score(features)
+                    scores = fallback_scorer.score(features_calibrated)
                     scores['is_ml_scored'] = False
                     scorer_used = 'deterministic_fallback'
             else:
-                scores = fallback_scorer.score(features)
+                scores = fallback_scorer.score(features_calibrated)
                 scores['is_ml_scored'] = False
                 scorer_used = 'deterministic_fallback'
 
@@ -162,14 +180,20 @@ def create_app():
                 'success': True,
                 'features': features,
                 'scores': scores,
+                'language': {
+                    'code':         lang_code,
+                    'display_name': lang_result['display_name'],
+                    'confidence':   lang_result['confidence'],
+                    'method':       lang_result['method'],
+                },
                 'meta': {
-                    'duration':          quality_result['duration_seconds'],
-                    'quality_score':     quality_result['quality_score'],
-                    'voiced_fraction':   quality_result['voiced_fraction'],
-                    'snr_estimate':      quality_result['snr_estimate'],
+                    'duration':           quality_result['duration_seconds'],
+                    'quality_score':      quality_result['quality_score'],
+                    'voiced_fraction':    quality_result['voiced_fraction'],
+                    'snr_estimate':       quality_result['snr_estimate'],
                     'processing_time_ms': processing_time_ms,
-                    'scorer_used':       scorer_used,
-                    'calibration':       'Indian voices — Hindi/Telugu/Tamil/Kannada/IndEng',
+                    'scorer_used':        scorer_used,
+                    'calibration':        f'Indian voices — {lang_result["display_name"]} calibrated',
                 }
             }), 200
 

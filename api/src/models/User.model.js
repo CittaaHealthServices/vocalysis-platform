@@ -60,6 +60,9 @@ const userSchema = new mongoose.Schema(
     departmentId: String,
     jobTitle: String,
     reportingManagerId: String,
+    // Primary language spoken — used to pass language_hint to VocaCore for per-language calibration
+    // ISO codes: hi (Hindi), te (Telugu), ta (Tamil), kn (Kannada), en-in (Indian English), etc.
+    languagePreference: { type: String, default: null },
     clinicianProfile: {
       rciRegistrationNumber: String,
       specialisation: String,

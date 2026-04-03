@@ -494,7 +494,7 @@ function _deterministicScores(features) {
 // ─── Main processor ───────────────────────────────────────────────────────────
 
 module.exports = async function audioAnalysisProcessor(job) {
-  const { sessionId, tenantId, audioBuffer, filename, patientId, clinicianId } = job.data;
+  const { sessionId, tenantId, audioBuffer, filename, patientId, clinicianId, languageHint } = job.data;
   let sessionDoc = null;
 
   try {
@@ -523,6 +523,8 @@ module.exports = async function audioAnalysisProcessor(job) {
       try {
         const form = new FormData();
         form.append('audio', audioData, { filename: filename || 'audio.wav' });
+        // Pass language hint (from user profile or auto-detected) for per-language calibration
+        if (languageHint) form.append('language_hint', languageHint);
 
         const response = await axios.post(`${vococoreUrl}/score`, form, {
           headers: { ...form.getHeaders(), 'X-VocoCore-Internal-Key': internalKey },
@@ -539,7 +541,12 @@ module.exports = async function audioAnalysisProcessor(job) {
           confScore   = Math.min(100, Math.round(((s.ml_confidence ?? 0.9) * 100 + (s.model_accuracy ?? 96.44)) / 2));
           featuresData = response.data.features || {};
           scorerUsed   = 'vococore_ml';
-          logger.info('VocoCore ML scoring complete — dep:%d anx:%d str:%d conf:%d', dep, anx, str, confScore);
+          // Capture detected language for storage on session document
+          if (response.data.language) {
+            job.data._detectedLanguage = response.data.language;
+          }
+          logger.info('VocoCore ML scoring complete — dep:%d anx:%d str:%d conf:%d lang:%s',
+            dep, anx, str, confScore, response.data.language?.code || 'unknown');
         } else {
           throw new Error(response.data?.error?.message || 'VocoCore /score returned failure');
         }
