@@ -1,241 +1,153 @@
-const nodemailer = require('nodemailer');
+/**
+ * emailNotifications processor — Vocalysis Worker
+ *
+ * Uses Resend (same as the API's emailService) as primary sender.
+ * Falls back to SMTP/nodemailer if RESEND_API_KEY is not set.
+ */
+
 const logger = require('../logger');
 
-// Email templates
-const emailTemplates = {
-  assessment_invite: {
-    subject: 'Invitation to Wellness Assessment',
-    getBody: (data) => `
-      <h2>Wellness Assessment Invitation</h2>
-      <p>Dear ${data.employeeName || 'Team Member'},</p>
-      <p>You are invited to participate in a wellness assessment as part of the Vocalysis platform initiative.</p>
-      <p><strong>Assessment Details:</strong></p>
-      <ul>
-        <li>Duration: 5-10 minutes</li>
-        <li>Type: Voice and wellness analysis</li>
-        <li>Confidential: Your data is encrypted and secure</li>
-      </ul>
-      <p><a href="${data.assessmentLink || '#'}">Start Assessment</a></p>
-      <p>If you have any questions, please contact your HR department or healthcare provider.</p>
-      <p>Best regards,<br>Vocalysis Wellness Team</p>
-    `
-  },
-  alert_notification: {
-    subject: '[ALERT] Wellness Assessment Result Notification',
-    getBody: (data) => `
-      <h2>Assessment Result Alert</h2>
-      <p>Dear ${data.clinicianName || 'Healthcare Provider'},</p>
-      <p>An assessment has been completed with notable findings.</p>
-      <p><strong>Assessment Information:</strong></p>
-      <ul>
-        <li>Employee: ${data.employeeName || 'Unknown'}</li>
-        <li>Severity Level: <span style="color: ${getSeverityColor(data.severity)}">${data.severity.toUpperCase()}</span></li>
-        <li>Assessment ID: ${data.sessionId || 'N/A'}</li>
-        <li>Timestamp: ${new Date().toLocaleString()}</li>
-      </ul>
-      <p><strong>Alert Message:</strong> ${data.message || 'No additional details'}</p>
-      <p>Please review this assessment and take appropriate action.</p>
-      <p><a href="${data.reviewLink || '#'}">Review Assessment</a></p>
-      <p>Best regards,<br>Vocalysis Alert System</p>
-    `
-  },
-  consultation_invite: {
-    subject: 'Consultation Invitation',
-    getBody: (data) => `
-      <h2>Consultation Invitation</h2>
-      <p>Dear ${data.employeeName || 'Team Member'},</p>
-      <p>You have been invited to a consultation session.</p>
-      <p><strong>Consultation Details:</strong></p>
-      <ul>
-        <li>Clinician: ${data.clinicianName || 'Healthcare Provider'}</li>
-        <li>Scheduled Date: ${data.scheduledDate || 'TBD'}</li>
-        <li>Duration: ${data.duration || '30 minutes'}</li>
-      </ul>
-      <p><a href="${data.consultationLink || '#'}">View Consultation Details</a></p>
-      <p>Best regards,<br>Vocalysis Team</p>
-    `
-  },
-  welcome_email: {
-    subject: 'Welcome to Vocalysis Platform',
-    getBody: (data) => `
-      <h2>Welcome to Vocalysis</h2>
-      <p>Dear ${data.userName || 'User'},</p>
-      <p>Welcome to the Vocalysis Platform 2.0 - Your Wellness Intelligence Hub.</p>
-      <p>Your account has been successfully created. You can now:</p>
-      <ul>
-        <li>Access personalized wellness assessments</li>
-        <li>Track your health metrics over time</li>
-        <li>Connect with healthcare providers</li>
-        <li>Manage your wellness journey</li>
-      </ul>
-      <p><a href="${data.loginLink || '#'}">Login to Your Account</a></p>
-      <p>If you need assistance, contact our support team.</p>
-      <p>Best regards,<br>Vocalysis Team</p>
-    `
-  },
-  password_reset: {
-    subject: 'Password Reset Request',
-    getBody: (data) => `
-      <h2>Password Reset</h2>
-      <p>Dear ${data.userName || 'User'},</p>
-      <p>We received a request to reset your password. Click the link below to create a new password.</p>
-      <p><a href="${data.resetLink || '#'}">Reset Your Password</a></p>
-      <p>This link expires in 1 hour.</p>
-      <p>If you did not request this reset, please ignore this email.</p>
-      <p>Best regards,<br>Vocalysis Team</p>
-    `
-  },
-  weekly_hr_report: {
-    subject: 'Weekly Wellness Report',
-    getBody: (data) => `
-      <h2>Weekly Wellness Summary Report</h2>
-      <p>Dear ${data.hrAdminName || 'HR Administrator'},</p>
-      <p>Here is your weekly wellness summary for the departments you oversee.</p>
-      <p><strong>Summary Statistics:</strong></p>
-      <ul>
-        <li>Total Employees: ${data.totalEmployees || 0}</li>
-        <li>Assessed This Week: ${data.assessedThisWeek || 0}</li>
-        <li>Wellness Distribution:</li>
-        <ul>
-          <li>Normal: ${data.normalCount || 0}</li>
-          <li>Medium Risk: ${data.mediumRiskCount || 0}</li>
-          <li>High Risk: ${data.highRiskCount || 0}</li>
-          <li>Critical: ${data.criticalCount || 0}</li>
-        </ul>
-        <li>Trend vs Last Week: ${data.trend || 'Stable'}</li>
-      </ul>
-      <p><a href="${data.dashboardLink || '#'}">View Full Dashboard</a></p>
-      <p>Best regards,<br>Vocalysis Analytics Team</p>
-    `
-  },
-  consultation_reminder: {
-    subject: 'Upcoming Consultation Reminder',
-    getBody: (data) => `
-      <h2>Consultation Reminder</h2>
-      <p>Dear ${data.recipientName || 'User'},</p>
-      <p>This is a reminder about your upcoming consultation.</p>
-      <p><strong>Consultation Details:</strong></p>
-      <ul>
-        <li>Scheduled: ${data.scheduledTime || 'TBD'}</li>
-        <li>Duration: ${data.duration || '30 minutes'}</li>
-        <li>With: ${data.otherPartyName || 'Healthcare Provider'}</li>
-      </ul>
-      <p><a href="${data.joinLink || '#'}">Join Consultation</a></p>
-      <p>If you need to reschedule, please notify us as soon as possible.</p>
-      <p>Best regards,<br>Vocalysis Team</p>
-    `
-  }
-};
-
-function getSeverityColor(severity) {
-  const colors = {
-    critical: '#dc2626',
-    high: '#ea580c',
-    medium: '#f59e0b',
-    low: '#10b981'
-  };
-  return colors[severity] || '#6b7280';
+/* ─── Resend sender ─────────────────────────────────────────────────────── */
+async function sendViaResend(to, subject, html) {
+  const { Resend } = require('resend');
+  const resend = new Resend(process.env.RESEND_API_KEY);
+  const from = process.env.RESEND_FROM_EMAIL || process.env.EMAIL_FROM || 'info@cittaa.in';
+  const { error } = await resend.emails.send({ from, to, subject, html });
+  if (error) throw new Error(`Resend error: ${error.message}`);
 }
 
-// Create email transporter
-function createTransporter() {
-  const smtpConfig = {
+/* ─── SMTP fallback ─────────────────────────────────────────────────────── */
+async function sendViaSMTP(to, subject, html) {
+  const nodemailer = require('nodemailer');
+  const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
     port: parseInt(process.env.SMTP_PORT || '587'),
     secure: process.env.SMTP_SECURE === 'true',
     auth: {
       user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASSWORD
-    }
-  };
-
-  return nodemailer.createTransport(smtpConfig);
+      // Support both env var naming conventions
+      pass: process.env.SMTP_PASS || process.env.SMTP_PASSWORD,
+    },
+  });
+  const from = process.env.EMAIL_FROM || process.env.SMTP_USER || 'noreply@cittaa.in';
+  const info = await transporter.sendMail({ from, to, subject, html });
+  return info.messageId;
 }
 
-// Hash email for logging
+/* ─── HTML templates ─────────────────────────────────────────────────────── */
+const emailTemplates = {
+  assessment_invite: {
+    subject: 'Invitation to Wellness Assessment',
+    getBody: (d) => `<p>Dear ${d.employeeName || 'Team Member'},</p>
+      <p>You are invited to a wellness assessment on the Vocalysis platform.</p>
+      <ul><li>Duration: 5–10 minutes</li><li>Confidential & encrypted</li></ul>
+      <p><a href="${d.assessmentLink || '#'}">Start Assessment →</a></p>
+      <p>Best regards,<br>Vocalysis Wellness Team</p>`,
+  },
+  alert_notification: {
+    subject: '[ALERT] Wellness Assessment Result',
+    getBody: (d) => `<p>Dear ${d.clinicianName || 'Healthcare Provider'},</p>
+      <p>An assessment has been completed with notable findings.</p>
+      <ul>
+        <li>Employee: ${d.employeeName || 'Unknown'}</li>
+        <li>Severity: <strong>${(d.severity || '').toUpperCase()}</strong></li>
+        <li>Session ID: ${d.sessionId || 'N/A'}</li>
+        <li>Time: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</li>
+      </ul>
+      <p><a href="${d.reviewLink || '#'}">Review Assessment →</a></p>`,
+  },
+  member_activity: {
+    subject: '✅ Member Activity — Assessment Completed',
+    getBody: (d) => `<p>Hi,</p>
+      <p>A member just completed an assessment on Vocalysis:</p>
+      <ul>
+        <li><strong>Tenant:</strong> ${d.tenantName || d.tenantId || 'Unknown'}</li>
+        <li><strong>Assessment ID:</strong> ${d.sessionId}</li>
+        <li><strong>Wellness Score:</strong> ${d.wellnessScore ?? 'N/A'}</li>
+        <li><strong>Risk Level:</strong> ${d.riskLevel || 'N/A'}</li>
+        <li><strong>Time (IST):</strong> ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</li>
+      </ul>
+      <p><a href="${d.dashboardLink || 'https://vocalysis.cittaa.in/cittaa-admin'}">View Admin Dashboard →</a></p>
+      <p>— Vocalysis Platform</p>`,
+  },
+  welcome_email: {
+    subject: 'Welcome to Vocalysis Platform',
+    getBody: (d) => `<p>Dear ${d.userName || 'User'},</p>
+      <p>Welcome to Vocalysis Platform — your wellness intelligence hub.</p>
+      <p><a href="${d.loginLink || '#'}">Login to Your Account →</a></p>
+      <p>Best regards,<br>Vocalysis Team</p>`,
+  },
+  password_reset: {
+    subject: 'Password Reset Request',
+    getBody: (d) => `<p>Dear ${d.userName || 'User'},</p>
+      <p>Click below to reset your password (expires in 1 hour):</p>
+      <p><a href="${d.resetLink || '#'}">Reset Password →</a></p>
+      <p>If you did not request this, ignore this email.</p>`,
+  },
+  weekly_hr_report: {
+    subject: 'Weekly Wellness Report',
+    getBody: (d) => `<p>Dear ${d.hrAdminName || 'HR Administrator'},</p>
+      <p>Weekly wellness summary:</p>
+      <ul>
+        <li>Total Employees: ${d.totalEmployees || 0}</li>
+        <li>Assessed This Week: ${d.assessedThisWeek || 0}</li>
+        <li>Normal: ${d.normalCount || 0} | Medium Risk: ${d.mediumRiskCount || 0} | High Risk: ${d.highRiskCount || 0} | Critical: ${d.criticalCount || 0}</li>
+      </ul>
+      <p><a href="${d.dashboardLink || '#'}">View Full Dashboard →</a></p>`,
+  },
+  consultation_reminder: {
+    subject: 'Upcoming Consultation Reminder',
+    getBody: (d) => `<p>Dear ${d.recipientName || 'User'},</p>
+      <p>Reminder: you have an upcoming consultation.</p>
+      <ul>
+        <li>Scheduled: ${d.scheduledTime || 'TBD'}</li>
+        <li>With: ${d.otherPartyName || 'Healthcare Provider'}</li>
+      </ul>
+      <p><a href="${d.joinLink || '#'}">Join →</a></p>`,
+  },
+  consultation_invite: {
+    subject: 'Consultation Invitation',
+    getBody: (d) => `<p>Dear ${d.employeeName || 'Team Member'},</p>
+      <p>You have been invited to a consultation with ${d.clinicianName || 'Healthcare Provider'}.</p>
+      <p>Scheduled: ${d.scheduledDate || 'TBD'}</p>
+      <p><a href="${d.consultationLink || '#'}">View Details →</a></p>`,
+  },
+};
+
 function hashEmail(email) {
   if (!email) return 'unknown';
-  const parts = email.split('@');
-  const localPart = parts[0];
-  const domainPart = parts[1];
-  const hashedLocal = localPart.substring(0, 2) + '*'.repeat(localPart.length - 2);
-  return `${hashedLocal}@${domainPart}`;
+  const [local, domain] = email.split('@');
+  return `${local.substring(0, 2)}${'*'.repeat(Math.max(0, local.length - 2))}@${domain}`;
 }
 
+/* ─── Main processor ────────────────────────────────────────────────────── */
 module.exports = async function emailNotificationsProcessor(job) {
   const { type, to, templateData } = job.data;
-  let attempts = job.attemptsMade || 0;
-  const maxAttempts = 3;
+  const attempts = job.attemptsMade || 0;
 
-  try {
-    logger.info('Processing email notification (type: %s, attempt: %d) to %s', type, attempts + 1, hashEmail(to));
-    job.progress(25);
+  logger.info('Processing email (type: %s, attempt: %d) → %s', type, attempts + 1, hashEmail(to));
+  job.progress(20);
 
-    // Validate email type
-    if (!emailTemplates[type]) {
-      throw new Error(`Unknown email template type: ${type}`);
-    }
+  if (!emailTemplates[type]) throw new Error(`Unknown email template type: ${type}`);
+  if (!to || !to.includes('@')) throw new Error(`Invalid recipient: ${to}`);
 
-    // Validate recipient
-    if (!to || !to.includes('@')) {
-      throw new Error(`Invalid recipient email: ${to}`);
-    }
+  const template = emailTemplates[type];
+  job.progress(50);
 
-    const template = emailTemplates[type];
-    job.progress(50);
+  const subject = template.subject;
+  const html    = `<!DOCTYPE html><html><body style="font-family:sans-serif;color:#1e1b4b;padding:24px">
+    ${template.getBody(templateData)}
+  </body></html>`;
 
-    // Build HTML body
-    const htmlBody = template.getBody(templateData);
-
-    // Send email
-    logger.info('Sending email (type: %s) to %s', type, hashEmail(to));
-    job.progress(75);
-
-    const transporter = createTransporter();
-    const mailOptions = {
-      from: process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || 'noreply@vocalysis.cittaa.in',
-      to: to,
-      subject: template.subject,
-      html: htmlBody,
-      text: templateData.plainText || 'Please view this email in HTML format.',
-      replyTo: process.env.SMTP_REPLY_TO || 'support@vocalysis.cittaa.in'
-    };
-
-    const info = await transporter.sendMail(mailOptions);
-
-    job.progress(100);
-    logger.info('Email sent successfully (type: %s, messageId: %s) to %s', type, info.messageId, hashEmail(to));
-
-    return {
-      type,
-      to: hashEmail(to),
-      messageId: info.messageId,
-      status: 'success',
-      timestamp: new Date()
-    };
-  } catch (error) {
-    attempts += 1;
-    logger.warn(
-      'Email notification failed (type: %s, attempt: %d/%d) to %s: %s',
-      type,
-      attempts,
-      maxAttempts,
-      hashEmail(to),
-      error.message
-    );
-
-    if (attempts < maxAttempts) {
-      // Retry with 30 second delay
-      throw new Error(`Email send failed (attempt ${attempts}): ${error.message}`);
-    } else {
-      // Log permanent failure
-      logger.error(
-        'Email notification permanent failure (type: %s, max attempts reached) to %s: %s',
-        type,
-        hashEmail(to),
-        error.message
-      );
-      throw new Error(`Email notification failed after ${maxAttempts} attempts: ${error.message}`);
-    }
+  let messageId;
+  if (process.env.RESEND_API_KEY) {
+    await sendViaResend(to, subject, html);
+    messageId = 'resend-' + Date.now();
+  } else {
+    messageId = await sendViaSMTP(to, subject, html);
   }
+
+  job.progress(100);
+  logger.info('Email sent (type: %s, id: %s) → %s', type, messageId, hashEmail(to));
+  return { type, to: hashEmail(to), messageId, status: 'success', timestamp: new Date() };
 };

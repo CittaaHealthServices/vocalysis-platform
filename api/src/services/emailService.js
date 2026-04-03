@@ -616,4 +616,47 @@ module.exports = {
   sendWeeklyHRReport,
   sendConsultationReminder,
   sendAlertEscalationNotification,
+  sendMemberActivityNotification,
 };
+
+/* ─── Cittaa Admin: member activity notification ─────────────────────────── */
+/**
+ * sendMemberActivityNotification
+ * Fired every time an employee completes an assessment.
+ * Recipients: ALERT_EMAIL_TO env var (comma-separated, e.g. sairam@cittaa.in,rohan@cittaa.in)
+ */
+async function sendMemberActivityNotification({ session, tenantName }) {
+  const adminEmails = (process.env.ALERT_EMAIL_TO || '')
+    .split(',')
+    .map(e => e.trim())
+    .filter(Boolean);
+
+  if (!adminEmails.length) {
+    logger.warn('sendMemberActivityNotification: ALERT_EMAIL_TO not set — skipping admin email');
+    return;
+  }
+
+  const score     = session.vocacoreResults?.wellnessScore ?? session.employeeWellnessOutput?.wellnessScore ?? null;
+  const riskLevel = session.vocacoreResults?.riskLevel ?? 'unknown';
+  const subject   = `[Vocalysis] Member assessment completed — ${tenantName || session.tenantId}`;
+
+  const html = wrapHtml(`
+    ${mkTopBar()}
+    ${mkHero('Member Activity', 'An employee just completed a wellness assessment', { emoji: '&#9989;', from: B.teal, to: B.tealDk })}
+    ${mkSectionLabel('Assessment Details')}
+    ${mkInfoCard([
+      { label: 'Organisation',   value: tenantName || session.tenantId },
+      { label: 'Session ID',     value: session._id || session.sessionId },
+      { label: 'Wellness Score', value: score !== null ? `${score} / 100` : '—' },
+      { label: 'Risk Level',     value: riskLevel.charAt(0).toUpperCase() + riskLevel.slice(1) },
+      { label: 'Completed (IST)',value: toIST(new Date()) },
+    ])}
+    ${mkButton(`${PLATFORM_URL}/cittaa-admin`, 'View Admin Dashboard &rarr;', { from: B.teal, to: B.tealDk })}
+    ${mkFooter()}
+  `);
+
+  for (const to of adminEmails) {
+    await sendEmail({ to, subject, html, text: `Member assessment completed for ${tenantName || session.tenantId}. Session: ${session._id}. Score: ${score}. Risk: ${riskLevel}.` })
+      .catch(err => logger.error('sendMemberActivityNotification failed', { to, error: err.message }));
+  }
+}

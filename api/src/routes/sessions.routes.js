@@ -341,6 +341,13 @@ if (false) assessmentQueue.process(async (job) => {
 
     logger.info('Assessment processing completed', { sessionId, alertCreated: alertResult.alertCreated });
 
+    // ── Notify Cittaa super-admins that a member completed an assessment ──────
+    emailService.sendMemberActivityNotification({
+      session,
+      tenantName: tenant?.displayName || tenant?.name || tenantId,
+    }).catch(err => logger.error('Admin member-activity notification failed', { error: err.message }));
+    // ─────────────────────────────────────────────────────────────────────────
+
     await auditService.log({
       userId,
       tenantId,

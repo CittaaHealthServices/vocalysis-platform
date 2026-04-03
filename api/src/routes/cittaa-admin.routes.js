@@ -398,6 +398,96 @@ router.get('/analytics', ...superAdmin, async (req, res) => {
   }
 });
 
+
+// ============================================================================
+// MEMBER USAGE — how many members used the platform (per day / per tenant)
+// ============================================================================
+router.get('/member-usage', ...superAdmin, async (req, res) => {
+  try {
+    const now   = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const week  = new Date(today.getTime() - 6 * 86400000);
+    const month = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    // Unique employees who completed at least one session today / this week / this month
+    const [uniqueToday, uniqueWeek, uniqueMonth, totalEver] = await Promise.all([
+      Session.distinct('employeeId', { status: 'completed', createdAt: { $gte: today } }),
+      Session.distinct('employeeId', { status: 'completed', createdAt: { $gte: week } }),
+      Session.distinct('employeeId', { status: 'completed', createdAt: { $gte: month } }),
+      Session.distinct('employeeId', { status: 'completed' }),
+    ]);
+
+    // Daily active members — last 14 days
+    const twoWeeksAgo = new Date(today.getTime() - 13 * 86400000);
+    const dailyAgg = await Session.aggregate([
+      { $match: { status: 'completed', createdAt: { $gte: twoWeeksAgo } } },
+      {
+        $group: {
+          _id: {
+            year:  { $year:  '$createdAt' },
+            month: { $month: '$createdAt' },
+            day:   { $dayOfMonth: '$createdAt' },
+          },
+          members:    { $addToSet: '$employeeId' },
+          sessions:   { $sum: 1 },
+        },
+      },
+      { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 } },
+    ]);
+
+    const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const dailyData = dailyAgg.map(d => ({
+      date:         `${d._id.day} ${MONTH_ABBR[d._id.month - 1]}`,
+      activeMembers: d.members.length,
+      sessions:      d.sessions,
+    }));
+
+    // Per-tenant member usage (this month)
+    const tenantUsage = await Session.aggregate([
+      { $match: { status: 'completed', createdAt: { $gte: month } } },
+      {
+        $group: {
+          _id:       '$tenantId',
+          members:   { $addToSet: '$employeeId' },
+          sessions:  { $sum: 1 },
+        },
+      },
+      { $sort: { sessions: -1 } },
+      { $limit: 20 },
+    ]);
+
+    // Enrich with tenant names
+    const tenantIds = tenantUsage.map(t => t._id);
+    const tenants   = await Tenant.find({ tenantId: { $in: tenantIds } }, 'tenantId displayName name').lean();
+    const tenantNameMap = {};
+    tenants.forEach(t => { tenantNameMap[t.tenantId] = t.displayName || t.name; });
+
+    const perTenant = tenantUsage.map(t => ({
+      tenantId:      t._id,
+      tenantName:    tenantNameMap[t._id] || t._id,
+      activeMembers: t.members.length,
+      sessions:      t.sessions,
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        summary: {
+          activeMembersToday: uniqueToday.length,
+          activeMembersThisWeek:  uniqueWeek.length,
+          activeMembersThisMonth: uniqueMonth.length,
+          totalMembersEver:       totalEver.length,
+        },
+        dailyData,
+        perTenant,
+      },
+    });
+  } catch (err) {
+    logger.error('cittaa-admin member-usage error', { error: err.message });
+    res.status(500).json({ success: false, error: { message: 'Failed to fetch member usage' } });
+  }
+});
+
 // ============================================================================
 // COMPANY / TENANT ROUTES (used by company admin panel)
 // ============================================================================
