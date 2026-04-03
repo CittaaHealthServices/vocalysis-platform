@@ -1,7 +1,8 @@
 import { useNavigate } from 'react-router-dom'
-import { Menu, Bell, LogOut, User, Settings, AlertTriangle, X, CheckCircle2, AlertCircle, Info } from 'lucide-react'
+import { Menu, Bell, BellRing, LogOut, User, Settings, AlertTriangle, X, CheckCircle2, AlertCircle, Info, WifiOff } from 'lucide-react'
 import { useState, useRef, useEffect } from 'react'
 import { useAuth } from '../../hooks/useAuth'
+import { useNotifications } from '../../hooks/useNotifications'
 import api from '../../services/api'
 
 /* Role-based profile and settings destinations */
@@ -61,29 +62,36 @@ function NotifIcon({ type }) {
   return <Info className="w-4 h-4 text-blue-500 flex-shrink-0" />
 }
 
+function _timeAgo(iso) {
+  if (!iso) return ''
+  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
+  if (diff < 60)         return `${diff}s ago`
+  if (diff < 3600)       return `${Math.floor(diff / 60)} min ago`
+  if (diff < 86400)      return `${Math.floor(diff / 3600)} hr ago`
+  return new Date(iso).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short' })
+}
+
 export const TopNav = ({ onMenuClick, userImpersonating = false }) => {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  // ── Real-time SSE notifications ───────────────────────────────────────────
+  const { notifications: sseNotifs, unreadCount: sseUnread, connected: sseConnected, markRead: sseMarkRead, markAllRead: sseMarkAll } = useNotifications()
 
   const [dropdownOpen, setDropdownOpen]   = useState(false)
   const [notifOpen, setNotifOpen]         = useState(false)
-  const [notifs, setNotifs]               = useState([])
 
   const dropdownRef = useRef(null)
   const notifRef    = useRef(null)
 
-  /* Fetch real notifications from the API, scoped by role/tenant via auth cookie */
-  useEffect(() => {
-    if (!user) return
-    api.get('/alerts?limit=15&status=active')
-      .then(res => {
-        const raw = res?.data?.data || res?.data?.alerts || res?.data || []
-        if (Array.isArray(raw) && raw.length > 0) {
-          setNotifs(raw.map((a, i) => alertToNotif(a, i)))
-        }
-      })
-      .catch(() => { /* silently keep empty if API unavailable */ })
-  }, [user])
+  // Map SSE notifications to display format
+  const notifs = sseNotifs.map(n => ({
+    id:    n._id,
+    type:  n.type === 'alert' || n.type === 'pre_alert' ? 'alert' : n.type === 'approval' ? 'success' : 'info',
+    title: n.title,
+    body:  n.body,
+    time:  _timeAgo(n.createdAt),
+    read:  n.read,
+  }))
 
   /* Close panels on outside click */
   useEffect(() => {
@@ -95,7 +103,7 @@ export const TopNav = ({ onMenuClick, userImpersonating = false }) => {
     return () => window.removeEventListener('mousedown', handler)
   }, [])
 
-  const unreadCount  = notifs.filter(n => !n.read).length
+  const unreadCount  = sseUnread
   const profileRoute = PROFILE_ROUTES[user?.role]
   const settingsRoute= SETTINGS_ROUTES[user?.role]
 
@@ -104,8 +112,8 @@ export const TopNav = ({ onMenuClick, userImpersonating = false }) => {
     : user?.name || user?.email || 'User'
   const initials     = displayName.charAt(0).toUpperCase()
 
-  const handleMarkAllRead = () => setNotifs(n => n.map(x => ({ ...x, read: true })))
-  const handleMarkRead    = (id) => setNotifs(n => n.map(x => x.id === id ? { ...x, read: true } : x))
+  const handleMarkAllRead = () => sseMarkAll()
+  const handleMarkRead    = (id) => sseMarkRead(id)
 
   const handleLogout = async () => {
     await logout()
@@ -141,19 +149,24 @@ export const TopNav = ({ onMenuClick, userImpersonating = false }) => {
             </div>
           )}
 
-          {/* ── Notifications bell ── */}
+          {/* ── Notifications bell (real-time SSE) ── */}
           <div className="relative" ref={notifRef}>
             <button
               onClick={() => { setNotifOpen(o => !o); setDropdownOpen(false) }}
               className="relative p-2 hover:bg-gray-100 rounded-xl transition"
-              title="Notifications"
+              title={`Notifications${sseConnected ? '' : ' (reconnecting…)'}`}
             >
-              <Bell className="w-5 h-5 text-gray-600" />
+              {unreadCount > 0
+                ? <BellRing className="w-5 h-5 text-purple-700" />
+                : <Bell className="w-5 h-5 text-gray-600" />
+              }
               {unreadCount > 0 && (
                 <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-white text-[9px] font-bold leading-none">
                   {unreadCount > 9 ? '9+' : unreadCount}
                 </span>
               )}
+              {/* SSE connection dot */}
+              <span className={`absolute bottom-0.5 right-0.5 w-1.5 h-1.5 rounded-full border border-white ${sseConnected ? 'bg-green-400' : 'bg-gray-300'}`} />
             </button>
 
             {/* Notifications panel */}

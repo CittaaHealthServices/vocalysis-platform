@@ -2,6 +2,12 @@ const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
 const { requireAuth, requireRole } = require('../middleware/auth');
+// Lazy-load notificationService to avoid circular dependency
+let _notifService = null;
+function notif() {
+  if (!_notifService) _notifService = require('../services/notificationService');
+  return _notifService;
+}
 const AuditLog = require('../models/AuditLog.model');
 const ApiKey = require('../models/ApiKey.model');
 const Tenant = require('../models/Tenant');
@@ -564,6 +570,13 @@ router.post('/b2c-registrations/:userId/approve', ...superAdmin, async (req, res
       loginUrl: `${process.env.PLATFORM_URL || 'https://mind.cittaa.in'}/login`,
     }).catch(err => logger.error('B2C approval email failed', { error: err.message }));
 
+    // Real-time SSE notification to the user (if they're online)
+    notif().send((user.userId || user._id).toString(), 'approval', {
+      title:     '✅ Your account has been approved!',
+      body:      'Welcome to Cittaa. You can now log in and start your wellness journey.',
+      actionUrl: '/login',
+    }).catch(() => {});
+
     logger.info('B2C account approved', { userId: user._id, approvedBy: user.approvedBy });
     res.json({ success: true, message: `Account approved and activated for ${user.email}` });
   } catch (err) {
@@ -597,6 +610,13 @@ router.post('/b2c-registrations/:userId/reject', ...superAdmin, async (req, res)
       name:   user.firstName,
       reason: reason || null,
     }).catch(err => logger.error('B2C rejection email failed', { error: err.message }));
+
+    // Real-time SSE notification to the user (if they're online)
+    notif().send((user.userId || user._id).toString(), 'rejection', {
+      title:     'Account Registration Update',
+      body:      reason ? `Your registration was not approved: ${reason}` : 'Your registration was not approved at this time.',
+      actionUrl: '/register',
+    }).catch(() => {});
 
     logger.info('B2C account rejected', { userId: user._id, reason });
     res.json({ success: true, message: `Registration rejected for ${user.email}` });

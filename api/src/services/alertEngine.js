@@ -2,6 +2,12 @@ const Alert = require('../models/Alert');
 const User = require('../models/User');
 const logger = require('../utils/logger');
 const emailService = require('./emailService');
+// Lazy-load notificationService to avoid circular dependency
+let _notifService = null;
+function notif() {
+  if (!_notifService) _notifService = require('./notificationService');
+  return _notifService;
+}
 
 class AlertEngine {
   constructor() {
@@ -109,6 +115,33 @@ class AlertEngine {
       alertLevel,
       triggeringScores
     });
+
+    // ── Push real-time SSE notification to all HR/clinical staff in this tenant ─
+    try {
+      const isCritical = alertLevel === 'critical';
+      const tenantIdStr = (tenant.tenantId || tenant._id).toString();
+      const hrStaff = await User.find({
+        tenantId: tenantIdStr,
+        role: { $in: ['HR_ADMIN', 'COMPANY_ADMIN', 'CLINICAL_PSYCHOLOGIST', 'CLINICAL_LEAD'] },
+        isActive: true,
+        'notificationPreferences.inAppAlerts': { $ne: false },
+      }).select('userId _id').lean();
+
+      for (const staff of hrStaff) {
+        const staffId = (staff.userId || staff._id).toString();
+        await notif().send(staffId, 'alert', {
+          tenantId:   tenantIdStr,
+          alertId:    alert._id.toString(),
+          alertLevel,
+          title:      isCritical ? '🔴 Critical Wellbeing Alert' : '🟠 Wellbeing Alert',
+          body:       `A ${alertLevel} alert has been triggered. Please review.`,
+          actionUrl:  `/alerts/${alert._id}`,
+        }, { priority: isCritical ? 'urgent' : 'high' });
+      }
+    } catch (sseErr) {
+      logger.debug('SSE alert push failed (non-fatal)', { error: sseErr.message });
+    }
+    // ──────────────────────────────────────────────────────────────────────────
 
     return {
       alertCreated: true,
