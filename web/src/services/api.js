@@ -69,14 +69,21 @@ api.interceptors.response.use(
     }
 
     // Normalize error response
+    // API returns { success: false, error: { message, code } }
+    // OR { success: false, message } — handle both shapes
     const errorData = error.response?.data || {}
+    const apiMessage =
+      errorData?.error?.message ||   // { error: { message: '...' } }
+      errorData?.message ||          // { message: '...' }
+      error.message ||               // Axios network-level message
+      'An error occurred'
     return Promise.reject({
       success: false,
       error: {
-        code: errorData.code || error.code || 'UNKNOWN_ERROR',
-        message: errorData.message || error.message || 'An error occurred',
+        code: errorData?.error?.code || errorData.code || error.code || 'UNKNOWN_ERROR',
+        message: apiMessage,
         status: error.response?.status,
-        details: errorData.details,
+        details: errorData?.error?.details || errorData.details,
       },
     })
   }
