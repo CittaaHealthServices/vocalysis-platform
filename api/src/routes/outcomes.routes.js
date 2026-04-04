@@ -81,7 +81,7 @@ router.post('/consultation/:sessionId', requireAuth, requireRole(['CLINICAL_PSYC
     // Find or create outcome record for this session
     let outcome = await OutcomeFollowUp.findOne({ sessionId, type: 'consultation_outcome' });
     if (!outcome) {
-      const session = await Session.findOne({ sessionId }).lean();
+      const session = await Session.findById(sessionId).lean();
       if (!session) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND' } });
       outcome = new OutcomeFollowUp({
         tenantId,

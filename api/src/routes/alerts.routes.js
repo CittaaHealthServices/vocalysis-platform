@@ -104,6 +104,63 @@ router.patch('/:id', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'SEN
 });
 
 /**
+ * GET /alerts/escalated
+ * Get all escalated alerts with assigned psychologist details.
+ * MUST be defined BEFORE /:id so Express does not treat "escalated" as an ID.
+ * Access: COMPANY_ADMIN, HR_ADMIN, CITTAA_SUPER_ADMIN, CITTAA_CEO
+ */
+router.get('/escalated', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'CITTAA_SUPER_ADMIN', 'CITTAA_CEO', 'SENIOR_CLINICIAN', 'CLINICAL_PSYCHOLOGIST']), async (req, res) => {
+  try {
+    const tenantId  = req.user.tenantId;
+    const userId    = (req.user.userId || req.user._id);
+    const userRole  = req.user.role;
+    const { page = 1, limit = 20 } = req.query;
+
+    let query = { tenantId, status: { $in: ['escalated', 'in_progress'] } };
+
+    // Psychologists only see cases assigned to them
+    if (['SENIOR_CLINICIAN', 'CLINICAL_PSYCHOLOGIST'].includes(userRole)) {
+      query.assignedTo = { $in: [userId.toString()] };
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const [alerts, total] = await Promise.all([
+      Alert.find(query)
+        .sort({ triggeredAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean(),
+      Alert.countDocuments(query),
+    ]);
+
+    // Enrich with employee and assignee names
+    const enriched = await Promise.all(alerts.map(async (a) => {
+      const [employee, assignees] = await Promise.all([
+        User.findById(a.employeeId).select('firstName lastName email department').lean().catch(() => null),
+        a.assignedTo?.length
+          ? User.find({ _id: { $in: a.assignedTo } }).select('firstName lastName email role').lean().catch(() => [])
+          : [],
+      ]);
+      return {
+        ...a,
+        employeeName:  employee ? `${employee.firstName} ${employee.lastName}` : 'Unknown',
+        employeeEmail: employee?.email,
+        department:    employee?.department,
+        assignees,
+      };
+    }));
+
+    res.json({
+      success: true,
+      data: { alerts: enriched, total, page: parseInt(page), pages: Math.ceil(total / parseInt(limit)) },
+    });
+  } catch (err) {
+    logger.error('Failed to list escalated alerts', { error: err.message });
+    res.status(500).json({ error: 'Failed to list escalated alerts' });
+  }
+});
+
+/**
  * GET /alerts/:id
  * Get alert detail
  */
@@ -317,62 +374,6 @@ router.put('/:id/assign', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN',
   } catch (err) {
     logger.error('Failed to assign psychologist to alert', { error: err.message });
     res.status(500).json({ error: 'Failed to assign psychologist' });
-  }
-});
-
-/**
- * GET /alerts/escalated
- * Get all escalated alerts with assigned psychologist details.
- * Access: COMPANY_ADMIN, HR_ADMIN, CITTAA_SUPER_ADMIN, CITTAA_CEO
- */
-router.get('/escalated', requireAuth, requireRole(['HR_ADMIN', 'COMPANY_ADMIN', 'CITTAA_SUPER_ADMIN', 'CITTAA_CEO', 'SENIOR_CLINICIAN', 'CLINICAL_PSYCHOLOGIST']), async (req, res) => {
-  try {
-    const tenantId  = req.user.tenantId;
-    const userId    = (req.user.userId || req.user._id);
-    const userRole  = req.user.role;
-    const { page = 1, limit = 20 } = req.query;
-
-    let query = { tenantId, status: { $in: ['escalated', 'in_progress'] } };
-
-    // Psychologists only see cases assigned to them
-    if (['SENIOR_CLINICIAN', 'CLINICAL_PSYCHOLOGIST'].includes(userRole)) {
-      query.assignedTo = { $in: [userId.toString()] };
-    }
-
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    const [alerts, total] = await Promise.all([
-      Alert.find(query)
-        .sort({ triggeredAt: -1 })
-        .skip(skip)
-        .limit(parseInt(limit))
-        .lean(),
-      Alert.countDocuments(query),
-    ]);
-
-    // Enrich with employee and assignee names
-    const enriched = await Promise.all(alerts.map(async (a) => {
-      const [employee, assignees] = await Promise.all([
-        User.findById(a.employeeId).select('firstName lastName email department').lean().catch(() => null),
-        a.assignedTo?.length
-          ? User.find({ _id: { $in: a.assignedTo } }).select('firstName lastName email role').lean().catch(() => [])
-          : [],
-      ]);
-      return {
-        ...a,
-        employeeName:  employee ? `${employee.firstName} ${employee.lastName}` : 'Unknown',
-        employeeEmail: employee?.email,
-        department:    employee?.department,
-        assignees,
-      };
-    }));
-
-    res.json({
-      success: true,
-      data: { alerts: enriched, total, page: parseInt(page), pages: Math.ceil(total / parseInt(limit)) },
-    });
-  } catch (err) {
-    logger.error('Failed to list escalated alerts', { error: err.message });
-    res.status(500).json({ error: 'Failed to list escalated alerts' });
   }
 });
 
