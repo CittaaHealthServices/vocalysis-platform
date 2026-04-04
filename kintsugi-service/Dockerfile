@@ -17,10 +17,10 @@ RUN pip install --no-cache-dir huggingface_hub==0.23.0
 # Download KintsugiHealth/dam model at build time so the container is ready
 # immediately on deploy (no cold-start model download on first request).
 # Model is ~500MB; build cache keeps this layer unless the repo changes.
-RUN python -c "\
-from huggingface_hub import snapshot_download; \
-snapshot_download('KintsugiHealth/dam', local_dir='/app/dam', \
-    ignore_patterns=['*.git', '*.gitattributes', 'training*', '*.ipynb'])"
+# We use a separate script with retry + exponential backoff to handle transient
+# network errors in Railway's build environment.
+COPY download_model.py .
+RUN python download_model.py
 
 # Install the DAM model's own requirements first (conda mamba → translated to pip)
 WORKDIR /app/dam
