@@ -46,7 +46,7 @@ module.exports = async function followUpReminderProcessor(job) {
     }
 
     // Get employee details
-    const employee = await Employee.findOne({ employeeId });
+    const employee = await Employee.findOne({ tenantId, employeeId });
     const phone    = employee?.phone || employee?.mobile;
     const email    = employee?.email;
     const name     = employee?.firstName || employee?.fullName?.split(' ')[0] || 'there';

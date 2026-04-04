@@ -700,8 +700,8 @@ module.exports = async function audioAnalysisProcessor(job) {
     // ── Step 5: Notify clinician if high-risk ─────────────────────────────────
     if (highRisk && clinicianId) {
       try {
-        const clinician = await Employee.findOne({ employeeId: clinicianId });
-        const employee  = await Employee.findOne({ employeeId: patientId });
+        const clinician = await Employee.findOne({ tenantId, employeeId: clinicianId });
+        const employee  = await Employee.findOne({ tenantId, employeeId: patientId });
         if (clinician?.email) {
           await queues.emailNotifications.add({
             type: 'alert_notification',
@@ -724,7 +724,7 @@ module.exports = async function audioAnalysisProcessor(job) {
 
     // ── Step 6: Update employee wellness profile ──────────────────────────────
     try {
-      const employee = await Employee.findOne({ employeeId: patientId });
+      const employee = await Employee.findOne({ tenantId, employeeId: patientId });
       if (employee) {
         if (!employee.wellnessProfile) employee.wellnessProfile = {};
         employee.wellnessProfile.currentRiskLevel    = riskLevel;
@@ -746,7 +746,7 @@ module.exports = async function audioAnalysisProcessor(job) {
       try {
         const whatsapp  = require('../../../api/src/services/whatsappService')
           || require('../../api/src/services/whatsappService');
-        const emp       = await Employee.findOne({ employeeId: patientId });
+        const emp       = await Employee.findOne({ tenantId, employeeId: patientId });
         const empPhone  = emp?.phone || emp?.mobile;
         const empName   = emp?.firstName || emp?.fullName?.split(' ')[0] || 'there';
 

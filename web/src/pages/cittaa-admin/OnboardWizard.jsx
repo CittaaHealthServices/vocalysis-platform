@@ -181,7 +181,7 @@ export const OnboardWizard = () => {
       toast.success(`${vals.companyName} onboarded successfully!`)
       navigate('/cittaa-admin/tenants')
     } catch (err) {
-      const msg = err?.response?.data?.error || err?.message || 'Onboarding failed — please try again'
+      const msg = err?.error?.message || err?.message || 'Onboarding failed — please try again'
       toast.error(msg)
     } finally {
       setSubmitting(false)

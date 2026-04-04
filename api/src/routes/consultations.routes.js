@@ -259,7 +259,7 @@ router.get('/:id', requireAuth, async (req, res) => {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
-    if (userRole === 'SENIOR_CLINICIAN' || userRole === 'CLINICAL_PSYCHOLOGIST' && consultation.clinicianId._id.toString() !== userId.toString()) {
+    if ((userRole === 'SENIOR_CLINICIAN' || userRole === 'CLINICAL_PSYCHOLOGIST') && consultation.clinicianId._id.toString() !== userId.toString()) {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 

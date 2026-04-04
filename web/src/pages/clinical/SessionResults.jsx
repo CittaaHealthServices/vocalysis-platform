@@ -173,7 +173,7 @@ export const SessionResults = () => {
           <Button variant="secondary" onClick={async () => {
             try {
               const res = await api.get(`/sessions/${id}/report`, { responseType: 'blob' })
-              const url = URL.createObjectURL(new Blob([res], { type: 'application/pdf' }))
+              const url = URL.createObjectURL(res)
               const a = document.createElement('a'); a.href = url; a.download = `session-${id}-report.pdf`; a.click()
             } catch {
               toast.error('PDF report not available yet')

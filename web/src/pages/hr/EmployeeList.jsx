@@ -109,10 +109,7 @@ export const EmployeeList = () => {
       setFormErrors({})
       refetch?.()
     } catch (err) {
-      const msg = err.response?.data?.error?.message
-        || err.response?.data?.error
-        || err.response?.data?.message
-        || 'Failed to add user'
+      const msg = err?.error?.message || err?.message || 'Failed to add user'
       toast.error(msg)
     } finally {
       setAdding(false)

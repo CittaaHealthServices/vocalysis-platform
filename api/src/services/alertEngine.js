@@ -45,36 +45,40 @@ class AlertEngine {
     let triggeringScores = [];
 
     // Check depression threshold
-    if (results.depression_score >= this.thresholds.depression.critical) {
+    const depScore = results.dimensionalScores?.depression ?? results.depression_score;
+    const anxScore = results.dimensionalScores?.anxiety    ?? results.anxiety_score;
+    const strScore = results.dimensionalScores?.stress     ?? results.stress_score;
+
+    if (depScore >= this.thresholds.depression.critical) {
       alertLevel = 'critical';
-      triggeringScores.push(`Depression: ${results.depression_score}`);
-    } else if (results.depression_score >= this.thresholds.depression.high) {
+      triggeringScores.push(`Depression: ${depScore}`);
+    } else if (depScore >= this.thresholds.depression.high) {
       if (!alertLevel || alertLevel !== 'critical') {
         alertLevel = 'high';
       }
-      triggeringScores.push(`Depression: ${results.depression_score}`);
+      triggeringScores.push(`Depression: ${depScore}`);
     }
 
     // Check anxiety threshold
-    if (results.anxiety_score >= this.thresholds.anxiety.critical) {
+    if (anxScore >= this.thresholds.anxiety.critical) {
       alertLevel = 'critical';
-      triggeringScores.push(`Anxiety: ${results.anxiety_score}`);
-    } else if (results.anxiety_score >= this.thresholds.anxiety.high) {
+      triggeringScores.push(`Anxiety: ${anxScore}`);
+    } else if (anxScore >= this.thresholds.anxiety.high) {
       if (!alertLevel || alertLevel !== 'critical') {
         alertLevel = 'high';
       }
-      triggeringScores.push(`Anxiety: ${results.anxiety_score}`);
+      triggeringScores.push(`Anxiety: ${anxScore}`);
     }
 
     // Check stress threshold
-    if (results.stress_score >= this.thresholds.stress.critical) {
+    if (strScore >= this.thresholds.stress.critical) {
       alertLevel = 'critical';
-      triggeringScores.push(`Stress: ${results.stress_score}`);
-    } else if (results.stress_score >= this.thresholds.stress.high) {
+      triggeringScores.push(`Stress: ${strScore}`);
+    } else if (strScore >= this.thresholds.stress.high) {
       if (!alertLevel || alertLevel !== 'critical') {
         alertLevel = 'high';
       }
-      triggeringScores.push(`Stress: ${results.stress_score}`);
+      triggeringScores.push(`Stress: ${strScore}`);
     }
 
     // If no threshold breached, return no alert

@@ -263,17 +263,17 @@ router.put('/:id', requireAuth, requireRole(['CITTAA_SUPER_ADMIN']), async (req,
     }
 
     const originalData = {
-      name: tenant.name,
+      displayName: tenant.displayName,
       monthlyAssessmentQuota: tenant.monthlyAssessmentQuota,
       status: tenant.status
     };
 
-    if (name && name !== tenant.name) {
-      const existing = await Tenant.findOne({ name });
+    if (name && name !== tenant.displayName) {
+      const existing = await Tenant.findOne({ displayName: name });
       if (existing) {
         return res.status(409).json({ error: 'Tenant name already exists' });
       }
-      tenant.name = name;
+      tenant.displayName = name;
     }
 
     if (monthlyAssessmentQuota !== undefined) {
@@ -302,7 +302,7 @@ router.put('/:id', requireAuth, requireRole(['CITTAA_SUPER_ADMIN']), async (req,
       requestId,
       changeSnapshot: {
         before: originalData,
-        after: { name: tenant.name, monthlyAssessmentQuota: tenant.monthlyAssessmentQuota, status: tenant.status }
+        after: { displayName: tenant.displayName, monthlyAssessmentQuota: tenant.monthlyAssessmentQuota, status: tenant.status }
       }
     });
 
