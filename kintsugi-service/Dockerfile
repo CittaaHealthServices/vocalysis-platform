@@ -40,8 +40,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py .
 COPY gunicorn.conf.py .
 
-EXPOSE $PORT
+EXPOSE 8001
 
-CMD ["gunicorn", "app:app", \
-     "--config", "gunicorn.conf.py", \
-     "--bind", "0.0.0.0:$PORT"]
+# Use shell form so $PORT is expanded at runtime by Railway
+CMD gunicorn app:app --config gunicorn.conf.py --bind 0.0.0.0:${PORT:-8001}
