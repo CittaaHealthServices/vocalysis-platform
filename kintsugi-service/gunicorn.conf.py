@@ -8,4 +8,9 @@ threads     = 2
 timeout     = 180      # DAM inference on long audio can take ~30-60s on CPU
 graceful_timeout = 60
 keepalive   = 5
-preload_app = True     # Load model once before forking (saves ~500MB RAM vs post-fork)
+# preload_app must be False: with preload_app=True the master forks the worker
+# before the warmup thread (which loads the model) finishes, and threads do NOT
+# survive fork(). The worker would start with _pipeline=None and no warmup thread.
+# With preload_app=False the worker loads the app itself and the warmup thread
+# runs correctly inside the worker process.
+preload_app = False
