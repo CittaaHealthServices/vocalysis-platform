@@ -8,6 +8,9 @@ torch==2.2.0+cpu
 torchaudio==2.2.0+cpu
 # Whisper backbone (DAM is fine-tuned on top of openai-whisper)
 openai-whisper==20231117
+# transformers required by DAM pipeline.py (HuggingFace Whisper internals)
+transformers==4.40.0
+accelerate==0.29.3
 # Audio I/O
 soundfile==0.12.1
 librosa==0.10.1
