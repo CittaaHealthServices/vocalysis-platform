@@ -287,4 +287,95 @@ router.post('/sessions/:sessionId/post-form', requireAuth, async (req, res) => {
   }
 });
 
+// ============================================================================
+// PATIENT TRAJECTORY — session-by-session trend history for charting
+// ============================================================================
+router.get('/patients/:id/trajectory', ...clinician, async (req, res) => {
+  try {
+    const { tenantId } = req.user;
+    const patientId = req.params.id;
+    const weeks = Math.min(52, Math.max(4, Number(req.query.weeks) || 12));
+
+    const windowStart = new Date();
+    windowStart.setDate(windowStart.getDate() - weeks * 7);
+
+    const sessions = await Session.find({
+      $or: [{ employeeId: patientId }, { patientId }],
+      tenantId,
+      status: 'completed',
+      createdAt: { $gte: windowStart },
+      'vocacoreResults.dimensionalScores.depression': { $exists: true },
+    })
+      .sort({ createdAt: 1 })
+      .select('createdAt vocacoreResults.dimensionalScores vocacoreResults.overallRiskLevel vocacoreResults.standardScales employeeWellnessOutput.wellnessScore trendData aiInsights')
+      .lean();
+
+    function avg(arr) {
+      const valid = arr.filter(v => v != null);
+      return valid.length ? valid.reduce((s, v) => s + v, 0) / valid.length : null;
+    }
+
+    const dataPoints = sessions.map(s => ({
+      date:        s.createdAt,
+      depression:  s.vocacoreResults?.dimensionalScores?.depression ?? null,
+      anxiety:     s.vocacoreResults?.dimensionalScores?.anxiety    ?? null,
+      stress:      s.vocacoreResults?.dimensionalScores?.stress     ?? null,
+      wellness:    s.employeeWellnessOutput?.wellnessScore          ?? null,
+      riskLevel:   s.vocacoreResults?.overallRiskLevel              ?? null,
+      phq9:        s.vocacoreResults?.standardScales?.phq9?.score   ?? null,
+      gad7:        s.vocacoreResults?.standardScales?.gad7?.score   ?? null,
+      trendLabel:  s.trendData?.overall                             ?? null,
+      keyFindings: s.aiInsights?.keyFindings                        ?? null,
+    }));
+
+    // 4-session rolling average for wellness
+    const withRolling = dataPoints.map((pt, idx) => {
+      const windowPts = dataPoints.slice(Math.max(0, idx - 3), idx + 1);
+      const rollingVal = avg(windowPts.map(p => p.wellness));
+      return {
+        ...pt,
+        rollingAvgWellness: rollingVal !== null ? +rollingVal.toFixed(1) : null,
+      };
+    });
+
+    // Summary stats
+    const allWellness  = withRolling.map(p => p.wellness).filter(v => v != null);
+    const allDep       = withRolling.map(p => p.depression).filter(v => v != null);
+    const firstScore   = allWellness[0] ?? null;
+    const lastScore    = allWellness[allWellness.length - 1] ?? null;
+    const overallDelta = firstScore !== null && lastScore !== null
+      ? +(lastScore - firstScore).toFixed(1) : null;
+
+    // Personal baseline: rolling average of all sessions except the latest
+    const baselinePts = withRolling.length > 1 ? withRolling.slice(0, -1) : withRolling;
+    const baselineAvg = {
+      depression: avg(baselinePts.map(p => p.depression)),
+      anxiety:    avg(baselinePts.map(p => p.anxiety)),
+      stress:     avg(baselinePts.map(p => p.stress)),
+      wellness:   avg(baselinePts.map(p => p.wellness)),
+    };
+
+    res.json({
+      success: true,
+      data: {
+        dataPoints: withRolling,
+        summary: {
+          totalSessions: sessions.length,
+          avgWellness:   allWellness.length ? +avg(allWellness).toFixed(1) : null,
+          avgDepression: allDep.length ? +avg(allDep).toFixed(1) : null,
+          overallDelta,
+          overallTrend: overallDelta === null ? 'insufficient_data'
+            : overallDelta > 5  ? 'improving'
+            : overallDelta < -5 ? 'deteriorating'
+            : 'stable',
+          baselineAvg,
+        },
+      },
+    });
+  } catch (err) {
+    logger.error('clinical/patients/:id/trajectory error', { error: err.message });
+    res.status(500).json({ success: false, error: { message: 'Failed to load trajectory' } });
+  }
+});
+
 module.exports = router;

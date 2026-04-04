@@ -855,6 +855,7 @@ module.exports = async function audioAnalysisProcessor(job) {
     let dep = 35, anx = 30, str = 32, confScore = 45;
     let featuresData = {};
     let scorerUsed   = 'deterministic_fallback';
+    let aiInsights   = null; // Populated when Gemini is used; stored on session for clinician review
 
     if (vococoreUrl) {
       try {
@@ -932,6 +933,15 @@ module.exports = async function audioAnalysisProcessor(job) {
             if (aiResult.features && Object.keys(aiResult.features).length > 0) {
               featuresData = { ...featuresData, ...aiResult.features };
             }
+            // Capture Gemini's clinical reasoning for storage on the session document
+            if (aiResult.keyFindings) {
+              aiInsights = {
+                keyFindings:          aiResult.keyFindings,
+                linguisticIndicators: aiResult.linguisticIndicators || null,
+                scorerUsed:           aiResult.scorerUsed,
+                capturedAt:           new Date(),
+              };
+            }
           }
         }
       }
@@ -957,6 +967,15 @@ module.exports = async function audioAnalysisProcessor(job) {
         scorerUsed = aiResult.scorerUsed;
         if (aiResult.features && Object.keys(aiResult.features).length > 0) {
           featuresData = aiResult.features;
+        }
+        // Capture Gemini's clinical reasoning for storage on the session document
+        if (aiResult.keyFindings) {
+          aiInsights = {
+            keyFindings:          aiResult.keyFindings,
+            linguisticIndicators: aiResult.linguisticIndicators || null,
+            scorerUsed:           aiResult.scorerUsed,
+            capturedAt:           new Date(),
+          };
         }
       }
     }
@@ -1026,6 +1045,8 @@ module.exports = async function audioAnalysisProcessor(job) {
             nextCheckInDate: new Date(Date.now() + 7 * 86400000),
           },
           audioFeatures:   featuresData,
+          // AI insights from Gemini (populated when Gemini tier is used as fallback)
+          ...(aiInsights && { aiInsights }),
           // legacy
           analysisResults: { overallRiskLevel: riskLevel, confidence: confScore, timestamp: now },
           'audioMetadata.processingCompletedAt': now,
