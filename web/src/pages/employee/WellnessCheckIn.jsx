@@ -237,13 +237,12 @@ export const WellnessCheckIn = () => {
       if (response?.dailyProgress) setDailyProgress(response.dailyProgress)
       setSessionId(newSessionId) // triggers useEffect → startPolling with correct ID
     } catch (error) {
-      // api interceptor normalises errors to { error: { message } }; also handle raw axios shape
+      // Interceptor normalises to { success:false, error:{ message, code, status } }
+      // Fall back through legacy shapes just in case
+      console.error('[check-in] submission failed:', error)
       const msg = error?.error?.message
-               || error?.response?.data?.error?.message
-               || error?.response?.data?.error
-               || error?.response?.data?.message
                || error?.message
-               || 'Failed to process check-in'
+               || 'Failed to process check-in. Please try again.'
       toast.error(msg)
       setCurrentStep(1)
     }

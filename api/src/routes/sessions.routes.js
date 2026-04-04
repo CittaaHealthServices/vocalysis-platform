@@ -40,7 +40,7 @@ const assessmentQueue = new Bull('audio-analysis', process.env.REDIS_URL || `red
  * POST /sessions
  * Create and process new assessment session
  */
-router.post('/', requireAuth, requireRole(['EMPLOYEE', 'HR_ADMIN', 'CLINICIAN']), upload.single('audio'), async (req, res) => {
+router.post('/', requireAuth, requireRole(['EMPLOYEE', 'HR_ADMIN', 'COMPANY_ADMIN', 'SENIOR_CLINICIAN', 'CLINICAL_PSYCHOLOGIST', 'CITTAA_SUPER_ADMIN']), upload.single('audio'), async (req, res) => {
   try {
     const { employeeId, notes } = req.body;
     // ✅ Fix: auth middleware sets req.user.userId (UUID), not req.user._id
@@ -66,13 +66,15 @@ router.post('/', requireAuth, requireRole(['EMPLOYEE', 'HR_ADMIN', 'CLINICIAN'])
       return res.status(400).json({ error: err.message });
     }
 
-    // ✅ Fix: find by userId (UUID string) not MongoDB _id; find tenant by tenantId string
+    // Find employee: try by UUID userId field first, fall back to MongoDB _id
+    // (HR/admin submissions may pass either form; EMPLOYEE always uses own userId)
+    const employeePromise = userRole === 'EMPLOYEE'
+      ? User.findOne({ userId: targetEmployeeId })
+      : User.findOne({ userId: targetEmployeeId }).then(u => u || User.findById(targetEmployeeId).catch(() => null));
+
     const [employee, tenant] = await Promise.all([
-      userRole === 'EMPLOYEE'
-        ? User.findOne({ userId: targetEmployeeId })       // self-submit: match by uuid
-        : (User.findOne({ userId: targetEmployeeId }) ||   // admin specifying another user
-           User.findById(targetEmployeeId).catch(() => null)),
-      Tenant.findOne({ tenantId }),                        // tenantId is string, not ObjectId
+      employeePromise,
+      Tenant.findOne({ tenantId }),
     ]);
 
     if (!employee) {
