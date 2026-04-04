@@ -49,11 +49,14 @@ router.post('/', requireAuth, requireRole(['EMPLOYEE', 'HR_ADMIN', 'COMPANY_ADMI
     const tenantId = req.user.tenantId;
     const requestId = req.requestId;
 
-    // Determine target employee
-    let targetEmployeeId = employeeId;
-    if (userRole === 'EMPLOYEE') {
-      targetEmployeeId = userId;
-    }
+    // Determine target employee.
+    // EMPLOYEE always submits for themselves.
+    // All other roles (HR_ADMIN, COMPANY_ADMIN, clinicians, super-admin) can either:
+    //   a) pass employeeId in the body to submit on behalf of someone else, OR
+    //   b) omit it to submit their own personal check-in (default to own userId)
+    let targetEmployeeId = (userRole === 'EMPLOYEE' || !employeeId)
+      ? userId
+      : employeeId;
 
     if (!req.file) {
       return res.status(400).json({ error: 'Audio file required' });
