@@ -190,7 +190,8 @@ class VocaCoreEngine {
     if (process.env.VOCOCORE_INFERENCE_KEY) {
       try {
         const genAI = new GoogleGenerativeAI(process.env.VOCOCORE_INFERENCE_KEY);
-        this._gemini = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+        // gemini-2.5-flash-preview requires SDK ≥ 0.24; use stable 1.5-flash as fallback model name
+        this._gemini = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
       } catch (_) {
         this._gemini = null;
       }

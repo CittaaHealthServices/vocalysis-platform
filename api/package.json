@@ -10,7 +10,7 @@
   "dependencies": {
     "@bull-board/api": "^5.10.2",
     "@bull-board/express": "^5.10.2",
-    "@google/generative-ai": "^0.2.1",
+    "@google/generative-ai": "^0.24.1",
     "axios": "^1.6.5",
     "bcryptjs": "^2.4.3",
     "bull": "^4.12.2",
