@@ -505,6 +505,7 @@ bulkImportQueue.process(async (job) => {
           createdAt: new Date()
         });
 
+        await employee.setPassword(tempPassword);
         await employee.save();
         imported++;
       } catch (err) {

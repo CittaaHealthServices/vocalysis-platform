@@ -132,7 +132,7 @@ router.get('/patients', ...clinician, async (req, res) => {
 
     // Enrich with latest session score
     const enriched = await Promise.all(patients.map(async (p) => {
-      const latest = await Session.findOne({ userId: p._id.toString() })
+      const latest = await Session.findOne({ patientId: p._id.toString() })
         .sort({ createdAt: -1 })
         .select('vocalysisScore emotionalState createdAt')
         .lean();

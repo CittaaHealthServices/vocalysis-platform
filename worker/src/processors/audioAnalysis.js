@@ -756,8 +756,7 @@ module.exports = async function audioAnalysisProcessor(job) {
         }
 
         // 7b. Schedule 3-day follow-up ping via delayed Bull job
-        const OutcomeFollowUp = require('../models/OutcomeFollowUp')
-          || require('../../api/src/models/OutcomeFollowUp');
+        const OutcomeFollowUp = require('../../../api/src/models/OutcomeFollowUp');
         const dims     = { depression: dep, anxiety: anx, stress: str, burnout: Math.round(str * 0.8) };
         const dominant = ['depression','anxiety','stress','burnout'].reduce((a, b) => dims[a] > dims[b] ? a : b);
 
