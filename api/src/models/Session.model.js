@@ -375,12 +375,7 @@ const trendDataBlock = {
   sessionCount:       Number,
   computedAt:         Date,
 };
-// Attach as a subdoc field (not a separate schema so it stays lightweight)
-// eslint-disable-next-line no-undef
-if (!('trendData' in require('./Session').schema?.paths || {})) {
-  // Guard against re-definition on hot-reload; the field is declared below
-}
-
+// Attach trendData as a plain Object field for lightweight longitudinal storage
 sessionSchema.add({
   trendData: {
     type: Object,

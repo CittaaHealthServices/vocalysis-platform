@@ -65,11 +65,21 @@ export default function Register() {
       })
       setSubmitted(true)   // show pending-approval screen
     } catch (err) {
-      const msg  = err?.error?.message || err?.message || 'Registration failed'
-      const code = err?.error?.status || err?.status
+      // api.js interceptor normalises errors to { error: { message, status } }
+      // Fall back through possible shapes just in case
+      const msg  = err?.error?.message
+                || err?.response?.data?.error?.message
+                || err?.response?.data?.message
+                || err?.message
+                || 'Registration failed. Please try again.'
+      const code = err?.error?.status
+                || err?.response?.status
+                || err?.status
+
       if (code === 409) {
-        // Show the friendly message from the server, plus a Sign In link
-        toast.error(msg, { duration: 6000 })
+        // Show server message inline under the email field AND as a toast
+        setErrs(prev => ({ ...prev, email: msg }))
+        toast.error(msg, { duration: 8000 })
       } else {
         toast.error(msg)
       }
