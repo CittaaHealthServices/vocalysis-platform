@@ -84,7 +84,7 @@ export const ROIDashboard = () => {
     refetch,
   } = useApi(
     ['outcomes', 'roi', period],
-    () => api.get(`/outcomes/roi?days=${period}`).then(r => r.data),
+    () => api.get(`/outcomes/roi?days=${period}`),
     { retry: 1, staleTime: 60_000 }
   )
 
@@ -93,7 +93,7 @@ export const ROIDashboard = () => {
     isLoading: loadingEffect,
   } = useApi(
     ['outcomes', 'intervention-effectiveness'],
-    () => api.get('/outcomes/intervention-effectiveness').then(r => r.data),
+    () => api.get('/outcomes/intervention-effectiveness'),
     { retry: 1, staleTime: 120_000 }
   )
 
