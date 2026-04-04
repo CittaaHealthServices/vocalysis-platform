@@ -11,6 +11,10 @@ openai-whisper==20231117
 # transformers required by DAM pipeline.py (HuggingFace Whisper internals)
 transformers==4.40.0
 accelerate==0.29.3
+# peft required by DAM pipeline (LoRA/PEFT fine-tuned Whisper head)
+peft==0.10.0
+# datasets used in DAM pipeline for metric computation
+datasets==2.19.0
 # Audio I/O
 soundfile==0.12.1
 librosa==0.10.1
