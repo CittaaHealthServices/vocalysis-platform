@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const logger = require('../logger');
 
 module.exports = async function alertEscalationProcessor() {
@@ -23,17 +24,28 @@ module.exports = async function alertEscalationProcessor() {
 
     for (const alert of newAlerts) {
       try {
-        // Update alert status
-        alert.status = 'escalated';
-        alert.escalatedAt = new Date();
-        await alert.save();
+        // Use findByIdAndUpdate to skip full-document Mongoose validation.
+        // Legacy alerts may have tenantId/employeeId stored as strings (not ObjectIds)
+        // which would cause alert.save() to throw a cast validation error.
+        await Alert.findByIdAndUpdate(alert._id, {
+          status: 'escalated',
+          escalatedAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        // Resolve tenantId — may be a populated sub-document or a raw value
+        const resolvedTenantId = alert.tenantId?._id ?? alert.tenantId;
+        const tenantIdIsObjectId = mongoose.Types.ObjectId.isValid(resolvedTenantId)
+          && String(new mongoose.Types.ObjectId(resolvedTenantId)) === String(resolvedTenantId);
 
         // Find escalation targets (Senior Clinician or Company Admin for tenant)
-        const escalationTargets = await Employee.find({
-          tenantId: alert.tenantId._id,
-          role: { $in: ['SENIOR_CLINICIAN', 'COMPANY_ADMIN'] },
-          status: 'active'
-        });
+        const escalationTargets = tenantIdIsObjectId
+          ? await Employee.find({
+              tenantId: resolvedTenantId,
+              role: { $in: ['SENIOR_CLINICIAN', 'COMPANY_ADMIN'] },
+              status: 'active'
+            })
+          : [];
 
         logger.info('Found %d escalation targets for alert %s', escalationTargets.length, alert._id);
 
@@ -62,21 +74,24 @@ module.exports = async function alertEscalationProcessor() {
           }
         }
 
-        // Create audit log entry
-        const AuditLog = require('../models/AuditLog');
-        await AuditLog.create({
-          tenantId: alert.tenantId._id,
-          action: 'alert_escalated',
-          resourceType: 'alert',
-          resourceId: alert._id,
-          details: {
-            originalStatus: 'new',
-            newStatus: 'escalated',
-            escalationTargets: escalationTargets.map(t => t.fullName),
-            timeSinceTrigger: `${Math.round((Date.now() - alert.triggeredAt.getTime()) / 1000 / 60)} minutes`
-          },
-          timestamp: new Date()
-        });
+        // Create audit log entry — only if tenantId is a valid ObjectId,
+        // otherwise AuditLog validation would throw a cast error for legacy alerts.
+        if (tenantIdIsObjectId) {
+          const AuditLog = require('../models/AuditLog');
+          await AuditLog.create({
+            tenantId: resolvedTenantId,
+            action: 'alert_escalated',
+            resourceType: 'alert',
+            resourceId: alert._id,
+            details: {
+              originalStatus: 'new',
+              newStatus: 'escalated',
+              escalationTargets: escalationTargets.map(t => t.fullName),
+              timeSinceTrigger: `${Math.round((Date.now() - alert.triggeredAt.getTime()) / 1000 / 60)} minutes`
+            },
+            timestamp: new Date()
+          });
+        }
 
         escalated++;
         logger.info('Alert %s escalated successfully', alert._id);
