@@ -33,7 +33,7 @@ RUN [ -f requirements.txt ] && pip install --no-cache-dir -r requirements.txt ||
 # Install our service requirements
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-build-isolation --no-cache-dir -r requirements.txt
 
 # Copy Flask app — placed in /app (NOT /app/dam) so our server code
 # is separate from the DAM repo; sys.path insertion handles the import.
