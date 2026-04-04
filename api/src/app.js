@@ -374,43 +374,63 @@ app.use((req, res) => {
   });
 });
 
-// Global error handler
-app.use((err, req, res, next) => {
+// Global error handler — logs to ErrorLog collection + responds to client
+app.use(async (err, req, res, next) => {
+  const statusCode = err.statusCode || err.status || 500;
+
   logger.error('Unhandled error', {
-    error: err.message,
-    stack: err.stack,
-    path: req.path,
-    method: req.method,
-    requestId: req.requestId
+    error:     err.message,
+    stack:     err.stack,
+    path:      req.path,
+    method:    req.method,
+    requestId: req.requestId,
+    status:    statusCode,
   });
 
-  // JWT errors
+  // ── Persist to ErrorLog (fire-and-forget, never blocks the response) ──────
+  // Skip JWT/auth errors and expected 4xx client errors from error log noise
+  const skipLog = err.name === 'JsonWebTokenError'
+                || err.name === 'TokenExpiredError'
+                || err.name === 'MulterError'
+                || err.code  === 'LIMIT_FILE_SIZE'
+                || statusCode === 404;
+
+  if (!skipLog) {
+    try {
+      const ErrorLog = require('./models/ErrorLog.model');
+      await ErrorLog.capture(err, req, { statusCode });
+    } catch (_) { /* never let error logging crash the app */ }
+  }
+
+  // ── JWT errors ─────────────────────────────────────────────────────────────
   if (err.name === 'JsonWebTokenError') {
-    return res.status(401).json({ error: 'Invalid token' });
+    return res.status(401).json({ success: false, error: { message: 'Invalid token', code: 'INVALID_TOKEN' } });
   }
-
   if (err.name === 'TokenExpiredError') {
-    return res.status(401).json({ error: 'Token expired' });
+    return res.status(401).json({ success: false, error: { message: 'Token expired', code: 'TOKEN_EXPIRED' } });
   }
 
-  // Multer errors
+  // ── Multer / file errors ───────────────────────────────────────────────────
   if (err.code === 'LIMIT_FILE_SIZE') {
-    return res.status(413).json({ error: 'File too large' });
+    return res.status(413).json({ success: false, error: { message: 'File too large', code: 'FILE_TOO_LARGE' } });
   }
-
   if (err.name === 'MulterError') {
-    return res.status(400).json({ error: err.message });
+    return res.status(400).json({ success: false, error: { message: err.message, code: 'UPLOAD_ERROR' } });
   }
 
-  // Default error response
-  const statusCode = err.statusCode || 500;
+  // ── Default response ───────────────────────────────────────────────────────
   const message = process.env.NODE_ENV === 'production'
     ? 'Internal server error'
     : err.message;
 
   res.status(statusCode).json({
-    error: message,
-    ...(process.env.NODE_ENV !== 'production' && { stack: err.stack })
+    success: false,
+    error: {
+      message,
+      code:      err.code || 'INTERNAL_ERROR',
+      requestId: req.requestId,
+      ...(process.env.NODE_ENV !== 'production' && { stack: err.stack }),
+    },
   });
 });
 

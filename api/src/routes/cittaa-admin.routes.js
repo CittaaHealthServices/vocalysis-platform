@@ -8,14 +8,16 @@ function notif() {
   if (!_notifService) _notifService = require('../services/notificationService');
   return _notifService;
 }
-const AuditLog = require('../models/AuditLog.model');
-const ApiKey = require('../models/ApiKey.model');
-const Tenant = require('../models/Tenant');
-const User = require('../models/User');
-const Session = require('../models/Session');
-const Alert = require('../models/Alert');
-const logger = require('../utils/logger');
-const emailService = require('../services/emailService');
+const AuditLog        = require('../models/AuditLog.model');
+const ErrorLog        = require('../models/ErrorLog.model');
+const HealthCheckLog  = require('../models/HealthCheckLog.model');
+const ApiKey          = require('../models/ApiKey.model');
+const Tenant          = require('../models/Tenant');
+const User            = require('../models/User');
+const Session         = require('../models/Session');
+const Alert           = require('../models/Alert');
+const logger          = require('../utils/logger');
+const emailService    = require('../services/emailService');
 
 // All routes require super admin
 const superAdmin = [requireAuth, requireRole(['CITTAA_SUPER_ADMIN', 'CITTAA_CEO'])];
@@ -208,12 +210,15 @@ router.get('/audit-log', ...superAdmin, async (req, res) => {
 });
 
 // ============================================================================
-// ERROR LOG — failures in AuditLog + future error store
+// ERROR LOG — real ErrorLog collection with stack traces & severity
 // ============================================================================
 router.get('/errors', ...superAdmin, async (req, res) => {
   try {
-    const { page = 1, limit = 50, from, to } = req.query;
-    const query = { outcome: 'failure' };
+    const { page = 1, limit = 50, severity, service, resolved, from, to } = req.query;
+    const query = {};
+    if (severity) query.severity = severity;
+    if (service)  query.service  = service;
+    if (resolved !== undefined) query.resolved = resolved === 'true';
     if (from || to) {
       query.timestamp = {};
       if (from) query.timestamp.$gte = new Date(from);
@@ -221,29 +226,66 @@ router.get('/errors', ...superAdmin, async (req, res) => {
     }
 
     const skip = (Number(page) - 1) * Number(limit);
-    const [entries, total] = await Promise.all([
-      AuditLog.find(query).sort({ timestamp: -1 }).skip(skip).limit(Number(limit)).lean(),
-      AuditLog.countDocuments(query),
+    const [entries, total, criticalCount, unresolvedCount] = await Promise.all([
+      ErrorLog.find(query).sort({ timestamp: -1 }).skip(skip).limit(Number(limit)).lean(),
+      ErrorLog.countDocuments(query),
+      ErrorLog.countDocuments({ severity: 'critical', resolved: false }),
+      ErrorLog.countDocuments({ resolved: false }),
     ]);
 
     res.json({
       success: true,
       data: entries.map(e => ({
-        id: e._id,
-        message: e.errorMessage || e.action,
-        action: e.action,
-        service: e.targetResource || 'api',
-        userId: e.userId,
-        tenantId: e.tenantId,
+        id:         e._id,
+        errorId:    e.errorId,
+        message:    e.message,
+        name:       e.name,
+        service:    e.service,
+        severity:   e.severity,
         statusCode: e.statusCode,
-        timestamp: e.timestamp,
-        stackTrace: null, // future: store stack traces in a separate collection
+        path:       e.path,
+        method:     e.method,
+        userId:     e.userId,
+        tenantId:   e.tenantId,
+        requestId:  e.requestId,
+        stackTrace: e.stack,
+        resolved:   e.resolved,
+        resolvedAt: e.resolvedAt,
+        timestamp:  e.timestamp,
       })),
-      meta: { total, page: Number(page), limit: Number(limit), pages: Math.ceil(total / Number(limit)) },
+      meta: {
+        total,
+        page:           Number(page),
+        limit:          Number(limit),
+        pages:          Math.ceil(total / Number(limit)),
+        criticalCount,
+        unresolvedCount,
+      },
     });
   } catch (err) {
     logger.error('cittaa-admin errors error', { error: err.message });
     res.status(500).json({ success: false, error: { message: 'Failed to fetch error log' } });
+  }
+});
+
+// PATCH /cittaa-admin/errors/:id/resolve — mark an error as resolved
+router.patch('/errors/:id/resolve', ...superAdmin, async (req, res) => {
+  try {
+    const entry = await ErrorLog.findByIdAndUpdate(
+      req.params.id,
+      {
+        resolved:   true,
+        resolvedAt: new Date(),
+        resolvedBy: req.user.userId || req.user._id?.toString(),
+        resolution: req.body.resolution || '',
+      },
+      { new: true }
+    );
+    if (!entry) return res.status(404).json({ success: false, error: { message: 'Error entry not found' } });
+    res.json({ success: true, data: { id: entry._id, resolved: true, resolvedAt: entry.resolvedAt } });
+  } catch (err) {
+    logger.error('cittaa-admin errors resolve error', { error: err.message });
+    res.status(500).json({ success: false, error: { message: 'Failed to resolve error entry' } });
   }
 });
 
@@ -342,21 +384,159 @@ router.delete('/api-keys/:id', ...superAdmin, async (req, res) => {
 });
 
 // ============================================================================
-// HEALTH MONITOR
+// HEALTH MONITOR — real live ping checks for all services
 // ============================================================================
 router.get('/health', ...superAdmin, async (req, res) => {
   try {
     const mongoose = require('mongoose');
-    const dbStatus = mongoose.connection.readyState === 1 ? 'healthy' : 'degraded';
+    const IORedis   = require('ioredis');
+    const Bull      = require('bull');
+
+    // ── Helper: measure a ping function and return result ──────────────────
+    const ping = async (serviceKey, fn) => {
+      const t0 = Date.now();
+      try {
+        const detail = await fn();
+        const ms = Date.now() - t0;
+        return { key: serviceKey, status: 'healthy', responseTime: ms, detail };
+      } catch (err) {
+        return { key: serviceKey, status: 'unhealthy', responseTime: Date.now() - t0, error: err.message };
+      }
+    };
+
+    const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+
+    // ── Run all checks in parallel ─────────────────────────────────────────
+    const [mongoResult, redisResult, queueResult, emailResult] = await Promise.all([
+
+      // MongoDB — measure real round-trip ping
+      ping('mongodb', async () => {
+        await mongoose.connection.db.admin().ping();
+        const stats = await mongoose.connection.db.stats();
+        return { collections: stats.collections, dataSize: stats.dataSize };
+      }),
+
+      // Redis — connect, PING, disconnect
+      ping('redis', async () => {
+        const client = new IORedis(redisUrl, {
+          lazyConnect:          true,
+          maxRetriesPerRequest: 1,
+          connectTimeout:       3000,
+          enableReadyCheck:     false,
+        });
+        await client.connect();
+        const pong = await client.ping();
+        const info = await client.info('memory');
+        const memMatch = info.match(/used_memory_human:(\S+)/);
+        client.disconnect();
+        return { pong, usedMemory: memMatch ? memMatch[1] : null };
+      }),
+
+      // Worker queue — check job counts from Bull
+      ping('vocoware', async () => {
+        const queue = new Bull('audio-analysis', redisUrl);
+        const counts = await queue.getJobCounts();
+        await queue.close();
+        return counts;
+      }),
+
+      // Email service — verify SMTP connection if configured
+      process.env.SMTP_HOST
+        ? ping('email_service', async () => {
+            const nodemailer = require('nodemailer');
+            const transporter = nodemailer.createTransporter({
+              host:   process.env.SMTP_HOST,
+              port:   parseInt(process.env.SMTP_PORT || '587', 10),
+              secure: process.env.SMTP_PORT === '465',
+              auth:   { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+            });
+            await transporter.verify();
+            return { smtp: process.env.SMTP_HOST };
+          })
+        : Promise.resolve({ key: 'email_service', status: 'healthy', responseTime: 0, detail: { note: 'not configured' } }),
+    ]);
+
+    // API server itself is always healthy if responding
+    const apiResult = {
+      key:          'api_server',
+      status:       'healthy',
+      responseTime: 1,
+      detail: {
+        uptime:  Math.floor(process.uptime()),
+        memory:  process.memoryUsage(),
+        version: process.env.npm_package_version || '2.0.0',
+        nodeVersion: process.version,
+      },
+    };
+
+    const allResults = [apiResult, mongoResult, redisResult, queueResult, emailResult];
+
+    // ── Persist results to HealthCheckLog (async, don't block response) ────
+    setImmediate(async () => {
+      try {
+        await Promise.all(allResults.map(r =>
+          HealthCheckLog.create({
+            service:      r.key,
+            status:       r.status,
+            responseTime: r.responseTime,
+            details:      r.error ? { message: r.error, consecutiveFailures: 1 } : { message: null },
+          }).catch(() => {})
+        ));
+      } catch (_) {}
+    });
+
+    // ── Compute 24h uptime from stored checks ──────────────────────────────
+    const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const uptimeStats = await Promise.all(
+      allResults.map(async r => {
+        const [total, healthy] = await Promise.all([
+          HealthCheckLog.countDocuments({ service: r.key, checkedAt: { $gte: since24h } }),
+          HealthCheckLog.countDocuments({ service: r.key, status: 'healthy', checkedAt: { $gte: since24h } }),
+        ]);
+        const pct = total > 0 ? Math.round((healthy / total) * 1000) / 10 : 100;
+        return { key: r.key, uptime: pct };
+      })
+    );
+    const uptimeMap = Object.fromEntries(uptimeStats.map(u => [u.key, u.uptime]));
+
+    // ── Build response ─────────────────────────────────────────────────────
+    const SERVICE_NAMES = {
+      api_server:    'API Server',
+      mongodb:       'MongoDB',
+      redis:         'Redis Cache',
+      vocoware:      'Audio Processing',
+      email_service: 'Email Service',
+    };
+
+    const unhealthy = allResults.filter(r => r.status === 'unhealthy').length;
+    const overall   = unhealthy === 0             ? 'operational'
+                    : unhealthy >= allResults.length - 1 ? 'major_outage'
+                    : 'degraded';
+
+    const responseTimes = allResults.filter(r => r.responseTime > 0).map(r => r.responseTime);
+    const avgResponseTime = responseTimes.length
+      ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length)
+      : 0;
+
     res.json({
       success: true,
       data: {
-        api: { status: 'healthy', uptime: Math.floor(process.uptime()), memory: process.memoryUsage() },
-        database: { status: dbStatus },
-        timestamp: new Date().toISOString(),
+        overall,
+        avgResponseTime: `${avgResponseTime}ms`,
+        checkedAt: new Date().toISOString(),
+        services: allResults.map(r => ({
+          key:          r.key,
+          name:         SERVICE_NAMES[r.key] || r.key,
+          status:       r.status,
+          responseTime: r.responseTime != null ? `${r.responseTime}ms` : null,
+          uptime:       `${uptimeMap[r.key] ?? 100}%`,
+          error:        r.error || null,
+          detail:       r.detail || null,
+        })),
       },
     });
   } catch (err) {
+    logger.error('cittaa-admin health check error', { error: err.message });
     res.status(500).json({ success: false, error: { message: 'Health check failed' } });
   }
 });
