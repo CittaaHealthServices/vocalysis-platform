@@ -17,6 +17,8 @@ from elevenlabs_trainer import start_retrain, get_retrain_status
 from auto_retrain import (
     start_scheduler, stop_scheduler, get_history,
     get_scheduler_info, trigger_now,
+    store_clinical_feedback, load_clinical_feedback, get_feedback_count,
+    increment_session_counter,
 )
 from language_detector import detect_language, apply_language_calibration
 
@@ -203,6 +205,75 @@ def create_app():
                 'code': 'SCORE_ERROR',
                 'message': 'Internal server error during scoring'
             }}), 500
+
+    @app.route('/clinical-feedback', methods=['POST'])
+    @require_internal_auth
+    def clinical_feedback():
+        """
+        Receive clinician-confirmed PHQ-9 / GAD-7 / PSS-10 scores for a session.
+
+        Called by the API immediately after a clinician finalises a session.
+        Stores the labelled acoustic feature vector as a training example.
+        These examples are used by elevenlabs_trainer.py during the next retrain
+        to improve the model's tier classification accuracy.
+
+        Body (JSON):
+          sessionId    — Vocalysis session ID
+          features     — acoustic feature dict (from /score extraction)
+          labels       — { phq9, gad7, pss10, phq9Tier, gad7Tier, riskLevel, diagnosisLabel }
+          language     — detected language code (optional)
+        """
+        try:
+            body = request.get_json(force=True, silent=True) or {}
+            session_id = body.get("sessionId", "unknown")
+            features   = body.get("features")
+            labels     = body.get("labels", {})
+            language   = body.get("language")
+
+            if not features or not isinstance(features, dict):
+                return jsonify({
+                    "success": False,
+                    "error":   {"code": "MISSING_FEATURES", "message": "features dict required"}
+                }), 400
+
+            if not labels or not any(labels.get(k) is not None for k in ("phq9", "gad7", "pss10")):
+                return jsonify({
+                    "success": False,
+                    "error":   {"code": "MISSING_LABELS", "message": "at least one of phq9/gad7/pss10 required"}
+                }), 400
+
+            stored = store_clinical_feedback(session_id, features, labels, language)
+            total  = get_feedback_count()
+
+            return jsonify({
+                "success":       stored,
+                "totalExamples": total,
+                "message":       f"Clinical feedback stored — {total} labelled examples in training pool",
+            }), 200 if stored else 500
+
+        except Exception as e:
+            logger.error("Error in /clinical-feedback: %s", e, exc_info=True)
+            return jsonify({"success": False, "error": {"code": "SERVER_ERROR", "message": str(e)}}), 500
+
+    @app.route('/clinical-feedback/stats', methods=['GET'])
+    @require_internal_auth
+    def clinical_feedback_stats():
+        """Return stats about the clinical feedback training pool."""
+        examples = load_clinical_feedback(max_examples=10000)
+        phq9_labelled  = sum(1 for e in examples if e.get("labels", {}).get("phq9") is not None)
+        gad7_labelled  = sum(1 for e in examples if e.get("labels", {}).get("gad7") is not None)
+        pss10_labelled = sum(1 for e in examples if e.get("labels", {}).get("pss10") is not None)
+        langs = {}
+        for e in examples:
+            l = e.get("language") or "unknown"
+            langs[l] = langs.get(l, 0) + 1
+        return jsonify({
+            "success":       True,
+            "totalExamples": len(examples),
+            "byScale": {"phq9": phq9_labelled, "gad7": gad7_labelled, "pss10": pss10_labelled},
+            "byLanguage":    langs,
+            "note":          "These labelled examples are used in the next ElevenLabs retrain cycle.",
+        }), 200
 
     @app.route('/session-trained', methods=['POST'])
     @require_internal_auth

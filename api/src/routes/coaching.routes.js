@@ -218,4 +218,211 @@ router.post('/action-items/:alertId/resolve', requireAuth, requireRole(MANAGER_R
   }
 });
 
+// ── GET /coaching/nudges ──────────────────────────────────────────────────────
+// AI-driven proactive coaching nudges for managers.
+// Analyses 14-day team trends and generates specific, actionable nudge cards
+// without exposing individual employee data.
+//
+// A nudge is triggered when:
+//   • Team average stress/dep/anxiety rose ≥ 10 points vs prior 14-day window
+//   • ≥ 2 employees have orange/red risk (quorum threshold for action)
+//   • Burnout score ≥ 50 for the team average
+//   • Active unresolved alerts exceed a threshold
+//
+// Returns: [{ id, type, title, insight, action, urgency, dimension, metric }]
+
+router.get('/nudges', requireAuth, requireRole(MANAGER_ROLES), async (req, res) => {
+  try {
+    const tenantId  = req.user.tenantId;
+    const now       = new Date();
+    const T14       = new Date(now - 14 * 86400000);
+    const T28       = new Date(now - 28 * 86400000);
+
+    // Fetch two 14-day windows to compute trend direction
+    const [recentSessions, priorSessions, openAlerts] = await Promise.all([
+      Session.find({ tenantId, status: 'completed', sessionDate: { $gte: T14 } })
+        .select('vocacoreResults.dimensionalScores vocacoreResults.overallRiskLevel employeeWellnessOutput.wellnessScore patientId trendData')
+        .lean(),
+      Session.find({ tenantId, status: 'completed', sessionDate: { $gte: T28, $lt: T14 } })
+        .select('vocacoreResults.dimensionalScores employeeWellnessOutput.wellnessScore')
+        .lean(),
+      Alert.countDocuments({ tenantId, status: { $in: ['new', 'acknowledged'] }, severity: { $in: ['high', 'critical'] } }),
+    ]);
+
+    if (recentSessions.length === 0) {
+      return res.json({ success: true, nudges: [], message: 'Not enough data yet — nudges appear after your team completes check-ins.' });
+    }
+
+    // ── Compute averages ────────────────────────────────────────────────────────
+    const _avg = (arr, fn) => arr.length ? arr.reduce((s, x) => s + (fn(x) || 0), 0) / arr.length : 0;
+
+    const dims = ['depression', 'anxiety', 'stress', 'burnout'];
+    const recent  = {};
+    const prior   = {};
+    const delta   = {};
+    for (const d of dims) {
+      recent[d] = _avg(recentSessions, s => s.vocacoreResults?.dimensionalScores?.[d]);
+      prior[d]  = priorSessions.length
+        ? _avg(priorSessions, s => s.vocacoreResults?.dimensionalScores?.[d])
+        : recent[d];  // no baseline → no delta nudge
+      delta[d]  = recent[d] - prior[d];
+    }
+    const recentWellness = _avg(recentSessions, s => s.employeeWellnessOutput?.wellnessScore);
+    const priorWellness  = priorSessions.length
+      ? _avg(priorSessions,  s => s.employeeWellnessOutput?.wellnessScore)
+      : recentWellness;
+    const wellnessDelta  = recentWellness - priorWellness;
+
+    const atRisk = recentSessions.filter(s => ['orange','red'].includes(s.vocacoreResults?.overallRiskLevel)).length;
+    const atRiskPct = Math.round(atRisk / recentSessions.length * 100);
+
+    // Count employees with a pre-alert trend flag
+    const preAlertCount = recentSessions.filter(s => s.trendData?.preAlert).length;
+
+    // ── Build nudge cards ───────────────────────────────────────────────────────
+    const nudges = [];
+    let nudgeId  = 1;
+
+    // Rising stress nudge
+    if (delta.stress >= 8 && recent.stress >= 45) {
+      nudges.push({
+        id:        `nudge_${nudgeId++}`,
+        type:      'rising_stress',
+        urgency:   delta.stress >= 15 ? 'high' : 'medium',
+        dimension: 'stress',
+        title:     delta.stress >= 15 ? '⚠️ Team Stress Spiking' : '📈 Team Stress Rising',
+        insight:   `Average team stress has risen by ${Math.round(delta.stress)} points over the last 14 days (now ${Math.round(recent.stress)}/100). This pattern often precedes burnout or disengagement.`,
+        action:    'Hold a brief 1:1 with each team member this week. Ask: "Is there anything I can take off your plate?" — even small relief signals genuine support.',
+        metric:    { current: Math.round(recent.stress), prior: Math.round(prior.stress), delta: Math.round(delta.stress) },
+        playbook:  { dimension: 'stress', riskLevel: delta.stress >= 15 ? 'red' : 'orange' },
+      });
+    }
+
+    // Rising depression nudge
+    if (delta.depression >= 8 && recent.depression >= 40) {
+      nudges.push({
+        id:        `nudge_${nudgeId++}`,
+        type:      'rising_depression',
+        urgency:   delta.depression >= 15 ? 'high' : 'medium',
+        dimension: 'depression',
+        title:     '🌧️ Low Mood Patterns Detected',
+        insight:   `Low mood / energy markers have increased by ${Math.round(delta.depression)} points in the last 14 days. This can affect motivation, productivity, and team morale if left unaddressed.`,
+        action:    'Reduce non-essential meetings for the team this week. Consider a "low-input day" where people can work without interruptions. Small flexibility signals can have outsized impact.',
+        metric:    { current: Math.round(recent.depression), prior: Math.round(prior.depression), delta: Math.round(delta.depression) },
+        playbook:  { dimension: 'depression', riskLevel: 'orange' },
+      });
+    }
+
+    // Rising anxiety nudge
+    if (delta.anxiety >= 8 && recent.anxiety >= 45) {
+      nudges.push({
+        id:        `nudge_${nudgeId++}`,
+        type:      'rising_anxiety',
+        urgency:   'medium',
+        dimension: 'anxiety',
+        title:     '😰 Anxiety Patterns Rising',
+        insight:   `Anxiety markers have risen by ${Math.round(delta.anxiety)} points. This often accompanies unclear expectations, upcoming deadlines, or organisational uncertainty.`,
+        action:    'Clarify priorities and deadlines in writing for the next 2 weeks. Uncertainty is a key driver of workplace anxiety — concrete plans reduce it.',
+        metric:    { current: Math.round(recent.anxiety), prior: Math.round(prior.anxiety), delta: Math.round(delta.anxiety) },
+        playbook:  { dimension: 'anxiety', riskLevel: 'orange' },
+      });
+    }
+
+    // Burnout risk nudge
+    if (recent.burnout >= 55) {
+      nudges.push({
+        id:        `nudge_${nudgeId++}`,
+        type:      'burnout_risk',
+        urgency:   recent.burnout >= 70 ? 'high' : 'medium',
+        dimension: 'burnout',
+        title:     recent.burnout >= 70 ? '🔥 High Burnout Risk' : '🕯️ Burnout Risk Building',
+        insight:   `Team burnout score is ${Math.round(recent.burnout)}/100. Burnout develops gradually — the window to intervene with low-cost changes is still open.`,
+        action:    'Rotate high-pressure tasks. Identify 1-2 team members carrying disproportionate load and redistribute proactively — do not wait for them to ask.',
+        metric:    { current: Math.round(recent.burnout), prior: Math.round(prior.burnout), delta: Math.round(delta.burnout) },
+        playbook:  { dimension: 'burnout', riskLevel: recent.burnout >= 70 ? 'red' : 'orange' },
+      });
+    }
+
+    // At-risk team percentage nudge
+    if (atRiskPct >= 30 || (atRisk >= 2 && atRiskPct >= 20)) {
+      nudges.push({
+        id:        `nudge_${nudgeId++}`,
+        type:      'at_risk_cluster',
+        urgency:   atRiskPct >= 50 ? 'high' : 'medium',
+        dimension: 'overall',
+        title:     `👥 ${atRiskPct}% of Team in At-Risk Zone`,
+        insight:   `${atRisk} out of ${recentSessions.length} recent check-ins show elevated risk. When ≥30% of a team is struggling, systemic factors (workload, culture, leadership) are often at play.`,
+        action:    'Consider an anonymous team pulse survey or a team retrospective focused on what\'s making work harder than it needs to be.',
+        metric:    { atRiskCount: atRisk, totalSessions: recentSessions.length, atRiskPct },
+        playbook:  { dimension: 'stress', riskLevel: 'orange' },
+      });
+    }
+
+    // Pre-alert trend nudge
+    if (preAlertCount >= 1) {
+      nudges.push({
+        id:        `nudge_${nudgeId++}`,
+        type:      'pre_alert_trend',
+        urgency:   preAlertCount >= 2 ? 'high' : 'medium',
+        dimension: 'trend',
+        title:     `📉 Early Deterioration Detected`,
+        insight:   `${preAlertCount} team member${preAlertCount > 1 ? 's are' : ' is'} showing a consistent worsening trend over recent check-ins, even without crossing critical thresholds yet. Early intervention is most effective at this stage.`,
+        action:    'Schedule a casual one-on-one check-in — not a performance review. Focus on how they\'re feeling about their work, not outputs.',
+        metric:    { preAlertCount },
+        playbook:  { dimension: 'stress', riskLevel: 'orange' },
+      });
+    }
+
+    // Open alerts nudge
+    if (openAlerts >= 3) {
+      nudges.push({
+        id:        `nudge_${nudgeId++}`,
+        type:      'unresolved_alerts',
+        urgency:   openAlerts >= 5 ? 'high' : 'medium',
+        dimension: 'alerts',
+        title:     `🔔 ${openAlerts} Unresolved Wellbeing Alerts`,
+        insight:   `${openAlerts} high-severity alerts are awaiting action. Delayed response to wellbeing alerts reduces employee trust in the programme.`,
+        action:    'Review and resolve alerts in the Action Items tab. Even a brief acknowledgement — "I\'ve seen this and I\'m checking in" — matters.',
+        metric:    { openAlerts },
+        playbook:  { dimension: 'stress', riskLevel: 'red' },
+      });
+    }
+
+    // Positive nudge — good trend worth reinforcing
+    if (wellnessDelta >= 5 && recentWellness >= 65 && nudges.length === 0) {
+      nudges.push({
+        id:        `nudge_${nudgeId++}`,
+        type:      'positive_trend',
+        urgency:   'low',
+        dimension: 'wellness',
+        title:     '✅ Team Wellness Improving',
+        insight:   `Team wellness score has risen by ${Math.round(wellnessDelta)} points over the last 14 days (now ${Math.round(recentWellness)}/100). Positive momentum is worth acknowledging.`,
+        action:    'Recognise the team\'s effort — publicly or personally. Share that you\'ve noticed the positive energy and appreciate it.',
+        metric:    { current: Math.round(recentWellness), prior: Math.round(priorWellness), delta: Math.round(wellnessDelta) },
+        playbook:  null,
+      });
+    }
+
+    // Sort by urgency: high → medium → low
+    const urgencyOrder = { high: 0, medium: 1, low: 2 };
+    nudges.sort((a, b) => (urgencyOrder[a.urgency] || 1) - (urgencyOrder[b.urgency] || 1));
+
+    res.json({
+      success:     true,
+      nudges,
+      generatedAt: new Date().toISOString(),
+      meta: {
+        teamAvg:     { ...Object.fromEntries(dims.map(d => [d, Math.round(recent[d])])), wellness: Math.round(recentWellness) },
+        trends:      Object.fromEntries(dims.map(d => [d, Math.round(delta[d])])),
+        atRiskPct,
+        openAlerts,
+        sessionCount: recentSessions.length,
+      },
+    });
+  } catch (err) {
+    logger.error('GET /coaching/nudges failed', { error: err.message });
+    res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
+  }
+});
+
 module.exports = router;

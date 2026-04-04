@@ -557,25 +557,44 @@ router.get('/:id', requireAuth, async (req, res) => {
 
 /**
  * PUT /sessions/:id/finalise
- * Clinician finalizes session and generates PDF
+ * Clinician finalizes session, records confirmed clinical scores, generates PDF.
+ *
+ * Body (all optional):
+ *   clinicianNotes     — free-text clinical observations
+ *   confirmedPhq9      — clinician-confirmed PHQ-9 score (0-27)
+ *   confirmedGad7      — clinician-confirmed GAD-7 score (0-21)
+ *   confirmedPss10     — clinician-confirmed PSS-10 score (0-40)
+ *   diagnosisLabel     — ICD-10 / DSM-5 label or brief text (e.g. "Mild depressive episode")
+ *   outcomeNotes       — clinical outcome notes (shared with retraining pipeline)
+ *
+ * PHQ-9/GAD-7 Feedback Loop:
+ *   When a clinician finalises with confirmed scores, those scores are stored on
+ *   the session and also fired to VocoCore /clinical-feedback so the acoustic
+ *   feature vectors from this session can be used as labelled training examples
+ *   the next time ElevenLabs retraining runs.
  */
-router.put('/:id/finalise', requireAuth, requireRole(['CLINICIAN', 'HR_ADMIN']), async (req, res) => {
+router.put('/:id/finalise', requireAuth, requireRole(['CLINICIAN', 'HR_ADMIN', 'CLINICAL_PSYCHOLOGIST']), async (req, res) => {
   try {
     const { id } = req.params;
-    const { clinicianNotes } = req.body;
-    const userId = req.user.userId || req.user._id;
-    const userRole = req.user.role;
-    const tenantId = req.user.tenantId;
+    const {
+      clinicianNotes,
+      confirmedPhq9,
+      confirmedGad7,
+      confirmedPss10,
+      diagnosisLabel,
+      outcomeNotes,
+    } = req.body;
+    const userId    = req.user.userId || req.user._id;
+    const userRole  = req.user.role;
+    const tenantId  = req.user.tenantId;
     const requestId = req.requestId;
 
-    const session = await Session.findById(id)
-      .populate('employeeId');
+    const session = await Session.findById(id).populate('employeeId');
 
     if (!session) {
       return res.status(404).json({ error: 'Session not found' });
     }
 
-    // Check authorization
     if (session.tenantId.toString() !== tenantId.toString()) {
       return res.status(403).json({ error: 'Unauthorized' });
     }
@@ -584,14 +603,28 @@ router.put('/:id/finalise', requireAuth, requireRole(['CLINICIAN', 'HR_ADMIN']),
       return res.status(400).json({ error: 'Session must be completed before finalizing' });
     }
 
-    // Add clinician notes
-    if (clinicianNotes) {
-      session.clinicianNotes = clinicianNotes;
+    // ── 1. Record clinician notes ──────────────────────────────────────────────
+    if (clinicianNotes) session.clinicianNotes = clinicianNotes;
+
+    // ── 2. Record confirmed clinical scores (PHQ-9 / GAD-7 / PSS-10) ──────────
+    // These are the gold-standard labels used to retrain the ML model.
+    const hasConfirmedScores = confirmedPhq9 != null || confirmedGad7 != null || confirmedPss10 != null;
+    if (hasConfirmedScores) {
+      if (!session.clinicalScores) session.clinicalScores = {};
+      if (confirmedPhq9  != null) session.clinicalScores.confirmedPhq9  = Number(confirmedPhq9);
+      if (confirmedGad7  != null) session.clinicalScores.confirmedGad7  = Number(confirmedGad7);
+      if (confirmedPss10 != null) session.clinicalScores.confirmedPss10 = Number(confirmedPss10);
+      session.clinicalScores.confirmedBy   = userId.toString();
+      session.clinicalScores.confirmedAt   = new Date();
+      session.clinicalScores.diagnosisLabel = diagnosisLabel || null;
+      session.clinicalScores.outcomeNotes   = outcomeNotes   || null;
+      logger.info('Clinical scores confirmed — PHQ-9:%s GAD-7:%s PSS-10:%s session:%s',
+        confirmedPhq9, confirmedGad7, confirmedPss10, id);
     }
 
-    // Generate PDF
+    // ── 3. Generate PDF report ─────────────────────────────────────────────────
     const clinician = await User.findById(userId);
-    const tenant = await Tenant.findOne({ tenantId });
+    const tenant    = await Tenant.findOne({ tenantId });
 
     const pdfBuffer = await pdfGenerator.generateSessionReport(
       session,
@@ -600,33 +633,74 @@ router.put('/:id/finalise', requireAuth, requireRole(['CLINICIAN', 'HR_ADMIN']),
       tenant
     );
 
-    session.reportGenerated = true;
-    session.reportGeneratedAt = new Date();
-    session.status = 'finalised';
+    session.reportGenerated    = true;
+    session.reportGeneratedAt  = new Date();
+    session.status             = 'finalised';
     await session.save();
+
+    // ── 4. PHQ-9/GAD-7 feedback to VocoCore retraining pipeline (non-blocking) ─
+    // Send confirmed clinical labels + acoustic features back to VocoCore so they
+    // become labelled training examples for the next ElevenLabs-triggered retrain.
+    if (hasConfirmedScores && session.audioFeatures && process.env.VOCOCORE_SERVICE_URL) {
+      const axios = require('axios');
+      axios.post(`${process.env.VOCOCORE_SERVICE_URL}/clinical-feedback`, {
+        sessionId:    id,
+        tenantId,
+        features:     session.audioFeatures,
+        language:     session.detectedLanguage || null,
+        labels: {
+          phq9:          confirmedPhq9 != null ? Number(confirmedPhq9)  : null,
+          gad7:          confirmedGad7 != null ? Number(confirmedGad7)  : null,
+          pss10:         confirmedPss10 != null ? Number(confirmedPss10) : null,
+          diagnosisLabel: diagnosisLabel || null,
+          // Severity buckets — used as classification labels for the ML model
+          phq9Tier:  _phq9Tier(confirmedPhq9),
+          gad7Tier:  _gad7Tier(confirmedGad7),
+          riskLevel: session.vocacoreResults?.overallRiskLevel || 'unknown',
+        },
+      }, {
+        headers: { 'X-VocoCore-Internal-Key': process.env.VOCOCORE_INTERNAL_KEY || 'dev-key-12345' },
+        timeout: 8000,
+      })
+      .then(() => logger.info('[clinical-feedback] sent to VocoCore for session %s', id))
+      .catch(err => logger.warn('[clinical-feedback] VocoCore ping failed (non-fatal): %s', err.message));
+    }
 
     await auditService.log({
       userId,
       tenantId,
-      role: userRole,
-      action: 'REPORT_GENERATE',
+      role:           userRole,
+      action:         'REPORT_GENERATE',
       targetResource: 'session',
-      targetId: id,
-      ipAddress: req.ip,
-      userAgent: req.get('user-agent'),
-      requestId
+      targetId:       id,
+      ipAddress:      req.ip,
+      userAgent:      req.get('user-agent'),
+      requestId,
     });
 
     res.json({
-      message: 'Session finalized',
+      message:    'Session finalized',
       session,
-      reportSize: pdfBuffer.length
+      reportSize: pdfBuffer.length,
+      ...(hasConfirmedScores && { clinicalFeedbackSent: true }),
     });
   } catch (err) {
     logger.error('Failed to finalize session', { error: err.message });
     res.status(500).json({ error: 'Failed to finalize session' });
   }
 });
+
+// ── Helpers for tier classification ────────────────────────────────────────────
+function _phq9Tier(score) {
+  if (score == null) return null;
+  const s = Number(score);
+  return s < 5 ? 'minimal' : s < 10 ? 'mild' : s < 15 ? 'moderate' : s < 20 ? 'moderately_severe' : 'severe';
+}
+function _gad7Tier(score) {
+  if (score == null) return null;
+  const s = Number(score);
+  return s < 5 ? 'minimal' : s < 10 ? 'mild' : s < 15 ? 'moderate' : 'severe';
+}
 
 /**
  * GET /sessions/:id/report

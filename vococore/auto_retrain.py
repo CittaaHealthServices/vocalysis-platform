@@ -33,7 +33,8 @@ logger = logging.getLogger(__name__)
 HERE          = Path(__file__).parent
 HISTORY_FILE  = HERE / "training" / "retrain_history.json"
 LOCK_FILE     = HERE / "training" / "retrain.lock"
-SESSION_COUNT_FILE = HERE / "training" / "session_counter.json"
+SESSION_COUNT_FILE  = HERE / "training" / "session_counter.json"
+FEEDBACK_FILE       = HERE / "training" / "clinical_feedback.jsonl"  # PHQ-9/GAD-7 labelled examples
 
 for p in [HISTORY_FILE.parent]:
     p.mkdir(parents=True, exist_ok=True)
@@ -366,6 +367,77 @@ def trigger_now(trigger="manual"):
     )
     t.start()
     return True, f"Retrain triggered ({trigger})"
+
+
+# ── PHQ-9 / GAD-7 Clinical Feedback Storage ──────────────────────────────────
+# Clinician-confirmed scores are appended to a JSONL file.
+# Each line is one labelled example:
+#   { sessionId, features, labels: { phq9, gad7, pss10, phq9Tier, gad7Tier, riskLevel, diagnosisLabel }, ts }
+#
+# During retraining, elevenlabs_trainer.py loads this file and uses the examples
+# as additional labelled training data to improve PHQ-9/GAD-7 tier classification.
+
+def store_clinical_feedback(session_id: str, features: dict, labels: dict, language: str = None) -> bool:
+    """
+    Persist a clinician-confirmed labelled example to the feedback store.
+
+    Args:
+        session_id: Vocalysis session ID (for deduplication)
+        features:   acoustic feature dict from VocoCore extraction
+        labels:     { phq9, gad7, pss10, phq9Tier, gad7Tier, riskLevel, diagnosisLabel }
+        language:   detected language code (e.g. 'hi', 'te', 'en-in')
+
+    Returns:
+        True on success, False on error
+    """
+    try:
+        entry = {
+            "sessionId": session_id,
+            "features":  features,
+            "labels":    labels,
+            "language":  language,
+            "ts":        datetime.now(timezone.utc).isoformat(),
+        }
+        with open(FEEDBACK_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry) + "\n")
+        logger.info("[clinical-feedback] stored labelled example — sessionId=%s phq9=%s gad7=%s lang=%s",
+                    session_id, labels.get("phq9"), labels.get("gad7"), language)
+        return True
+    except Exception as e:
+        logger.error("[clinical-feedback] storage failed: %s", e)
+        return False
+
+
+def load_clinical_feedback(max_examples: int = 5000) -> list:
+    """
+    Load labelled clinical feedback examples for use in retraining.
+    Returns the most recent `max_examples` entries.
+    """
+    if not FEEDBACK_FILE.exists():
+        return []
+    try:
+        lines = FEEDBACK_FILE.read_text(encoding="utf-8").strip().splitlines()
+        examples = []
+        for line in lines[-max_examples:]:
+            try:
+                examples.append(json.loads(line))
+            except Exception:
+                pass
+        logger.info("[clinical-feedback] loaded %d labelled examples for retraining", len(examples))
+        return examples
+    except Exception as e:
+        logger.error("[clinical-feedback] load failed: %s", e)
+        return []
+
+
+def get_feedback_count() -> int:
+    """Return number of stored clinical feedback examples."""
+    if not FEEDBACK_FILE.exists():
+        return 0
+    try:
+        return sum(1 for _ in open(FEEDBACK_FILE, encoding="utf-8"))
+    except Exception:
+        return 0
 
 
 def get_scheduler_info():

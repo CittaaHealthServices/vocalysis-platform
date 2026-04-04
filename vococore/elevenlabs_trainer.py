@@ -415,6 +415,110 @@ def _hotswap_scorer():
         return False
 
 
+# ── Clinical Feedback → Training Data ────────────────────────────────────────
+
+# Map clinical tier labels to CLASS_LABELS = ["normal","depression_risk","anxiety_risk","stress_risk"]
+_PHQ9_TO_CLASS = {
+    "minimal":           "normal",
+    "mild":              "normal",
+    "moderate":          "depression_risk",
+    "moderately_severe": "depression_risk",
+    "severe":            "depression_risk",
+}
+_GAD7_TO_CLASS = {
+    "minimal":  "normal",
+    "mild":     "normal",
+    "moderate": "anxiety_risk",
+    "severe":   "anxiety_risk",
+}
+_RISK_TO_CLASS = {
+    "green":  "normal",
+    "yellow": "normal",
+    "orange": "stress_risk",
+    "red":    "stress_risk",
+}
+
+
+def _features_dict_to_vector(feat_dict: dict) -> np.ndarray:
+    """Convert a features dict (from VocoCore /score response) to a FEATURE_NAMES vector."""
+    vec = []
+    for name in FEATURE_NAMES:
+        # Try exact key first, then common aliases
+        val = feat_dict.get(name)
+        if val is None:
+            # Handle known aliases
+            aliases = {
+                "f0_mean":        ("pitch_mean",),
+                "f0_std":         ("pitch_std",),
+                "speech_rate":    ("articulation_rate", "rate_syllables"),
+                "energy_mean":    ("energy",),
+                "jitter":         ("jitter_local",),
+                "shimmer":        ("shimmer_local",),
+                "hnr":            ("hnr_db",),
+                "mfcc_1":         ("mfcc1",),
+                "mfcc_2":         ("mfcc2",),
+                "mel_energy_low": ("mel_low",),
+                "mel_energy_high":("mel_high",),
+            }
+            for alias in aliases.get(name, ()):
+                if alias in feat_dict:
+                    val = feat_dict[alias]
+                    break
+        vec.append(float(val) if val is not None else 0.0)
+    return np.array(vec, dtype=np.float32)
+
+
+def _clinical_feedback_to_training_data():
+    """
+    Load stored clinical feedback examples and convert to (X, y) arrays.
+    Labelling priority: PHQ-9 tier > GAD-7 tier > risk level.
+    Returns X (n_samples × n_features) and y (n_samples,) or (empty arrays) if no data.
+    """
+    try:
+        from auto_retrain import load_clinical_feedback
+        examples = load_clinical_feedback(max_examples=5000)
+    except Exception as e:
+        logger.warning(f"Could not load clinical feedback: {e}")
+        return np.empty((0, len(FEATURE_NAMES))), np.array([])
+
+    X_list, y_list = [], []
+    for ex in examples:
+        feat = ex.get("features", {})
+        lbl  = ex.get("labels",   {})
+        if not feat:
+            continue
+
+        # Determine class label from tier priority
+        cls = None
+        phq9_tier = lbl.get("phq9Tier")
+        gad7_tier = lbl.get("gad7Tier")
+        risk_lvl  = lbl.get("riskLevel")
+
+        if phq9_tier and phq9_tier in _PHQ9_TO_CLASS:
+            cls = _PHQ9_TO_CLASS[phq9_tier]
+        elif gad7_tier and gad7_tier in _GAD7_TO_CLASS:
+            cls = _GAD7_TO_CLASS[gad7_tier]
+        elif risk_lvl and risk_lvl in _RISK_TO_CLASS:
+            cls = _RISK_TO_CLASS[risk_lvl]
+
+        if cls is None:
+            continue
+
+        try:
+            vec = _features_dict_to_vector(feat)
+            if len(vec) == len(FEATURE_NAMES):
+                X_list.append(vec)
+                y_list.append(CLASS_LABELS.index(cls))
+        except Exception:
+            continue
+
+    if not X_list:
+        return np.empty((0, len(FEATURE_NAMES))), np.array([])
+
+    logger.info(f"[clinical-feedback] {len(X_list)} labelled examples loaded for retraining")
+    return np.array(X_list, dtype=np.float32), np.array(y_list, dtype=np.int32)
+
+
 # ── Main retrain routine (runs in background thread) ─────────────────────────
 
 def run_retrain_background(api_key):
@@ -428,16 +532,30 @@ def run_retrain_background(api_key):
         total_clips = sum(len(v) for v in generated.values())
         logger.info(f"Generated {total_clips} audio clips")
 
-        # 2. Extract features
+        # 2. Extract features from ElevenLabs audio
         _update_status("running", "Extracting acoustic features...")
         X_real, y_real = _build_feature_matrix(generated)
-        logger.info(f"Extracted features from {len(X_real)} clips")
+        logger.info(f"Extracted features from {len(X_real)} ElevenLabs clips")
+
+        # 2b. Incorporate clinician-confirmed PHQ-9/GAD-7 examples (gold-standard labels)
+        _update_status("running", "Loading PHQ-9/GAD-7 clinical feedback examples...")
+        X_feedback, y_feedback = _clinical_feedback_to_training_data()
+        if len(X_feedback) > 0:
+            # Clinical examples are high-quality — weight them × 4 in the training blend
+            X_feedback_w = np.tile(X_feedback, (4, 1))
+            y_feedback_w = np.tile(y_feedback, 4)
+            X_real = np.vstack([X_real, X_feedback_w]) if len(X_real) > 0 else X_feedback_w
+            y_real = np.concatenate([y_real, y_feedback_w]) if len(y_real) > 0 else y_feedback_w
+            logger.info(
+                f"[clinical-feedback] added {len(X_feedback)} gold-label examples "
+                f"(×4 weight) → total training pool: {len(X_real)} samples"
+            )
 
         if len(X_real) < 8:
             raise RuntimeError(f"Too few samples ({len(X_real)}) — check ElevenLabs API / audio quality")
 
         # 3. Fine-tune
-        _update_status("running", "Fine-tuning ML model...")
+        _update_status("running", f"Fine-tuning ML model on {len(X_real)} samples ({len(X_feedback)} clinical gold labels)...")
         model, scaler, meta = _finetune(X_real, y_real)
 
         # 4. Hot-swap
@@ -447,12 +565,17 @@ def run_retrain_background(api_key):
         acc     = meta.get("test_accuracy", 0)
         real_acc = meta.get("real_audio_accuracy", 0)
 
+        clinical_count = len(X_feedback) if 'X_feedback' in dir() else 0
         _update_status(
             "complete",
             f"Done — test acc {acc*100:.1f}%  real audio acc {real_acc*100:.1f}%  "
+            f"clinical gold labels used: {clinical_count}  "
             f"hot-swap={'ok' if swapped else 'failed'}"
         )
-        logger.info("=== ElevenLabs retrain pipeline complete ===")
+        logger.info(
+            "=== ElevenLabs retrain pipeline complete — clinical feedback examples: %d ===",
+            clinical_count
+        )
 
     except Exception as e:
         logger.error(f"Retrain pipeline failed: {e}", exc_info=True)
