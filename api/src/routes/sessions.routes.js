@@ -21,11 +21,13 @@ const upload = multer({
   storage,
   limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
   fileFilter: (req, file, cb) => {
-    const allowedMimes = ['audio/wav', 'audio/mpeg', 'audio/mp3', 'audio/ogg', 'audio/webm'];
-    if (allowedMimes.includes(file.mimetype)) {
+    // Use startsWith so codec suffixes like 'audio/webm;codecs=opus' are accepted
+    const allowedPrefixes = ['audio/wav', 'audio/mpeg', 'audio/mp3', 'audio/ogg', 'audio/webm', 'audio/mp4', 'audio/x-m4a'];
+    const ok = allowedPrefixes.some(p => file.mimetype.startsWith(p));
+    if (ok) {
       cb(null, true);
     } else {
-      cb(new Error('Invalid audio format'));
+      cb(new Error(`Invalid audio format: ${file.mimetype}`));
     }
   }
 });

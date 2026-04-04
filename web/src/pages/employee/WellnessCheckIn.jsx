@@ -227,7 +227,8 @@ export const WellnessCheckIn = () => {
   const handleRecordingComplete = async (blob) => {
     setCurrentStep(2)
     const formData = new FormData()
-    formData.append('audio', blob)
+    // Include filename so multer receives proper Content-Type in the multipart part
+    formData.append('audio', blob, 'recording.webm')
     formData.append('type', 'wellness-checkin')
     try {
       const response = await api.post('/sessions', formData)
@@ -236,7 +237,13 @@ export const WellnessCheckIn = () => {
       if (response?.dailyProgress) setDailyProgress(response.dailyProgress)
       setSessionId(newSessionId) // triggers useEffect → startPolling with correct ID
     } catch (error) {
-      const msg = error.response?.data?.error || 'Failed to process check-in'
+      // api interceptor normalises errors to { error: { message } }; also handle raw axios shape
+      const msg = error?.error?.message
+               || error?.response?.data?.error?.message
+               || error?.response?.data?.error
+               || error?.response?.data?.message
+               || error?.message
+               || 'Failed to process check-in'
       toast.error(msg)
       setCurrentStep(1)
     }
