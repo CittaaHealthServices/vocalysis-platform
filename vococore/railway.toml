@@ -5,6 +5,8 @@
 [deploy]
   startCommand = "gunicorn app:app --config gunicorn.conf.py"
   healthcheckPath = "/health"
-  healthcheckTimeout = 60
+  # VocoCore loads librosa + sklearn + xgboost + pandas + 41MB joblib model
+  # with preload_app=True before workers start → needs >120s on Railway CPU
+  healthcheckTimeout = 180
   restartPolicyType = "ON_FAILURE"
-  restartPolicyMaxRetries = 3
+  restartPolicyMaxRetries = 5

@@ -23,7 +23,9 @@ logger = logging.getLogger("gunicorn.error")
 # 4 threads gives good concurrency without duplicating background jobs.
 workers     = int(os.environ.get("GUNICORN_WORKERS", "1"))
 worker_class = "gthread"
-threads     = int(os.environ.get("GUNICORN_THREADS", "8"))
+# Keep threads low — each concurrent audio request holds numpy arrays in memory.
+# 8 threads × ~50MB/request = 400MB+ concurrent, which OOM-kills on Railway's 512MB limit.
+threads     = int(os.environ.get("GUNICORN_THREADS", "2"))
 timeout     = 180       # audio processing can take ~60-90s
 keepalive   = 5
 preload_app = True      # load app in master before forking → scheduler starts once
