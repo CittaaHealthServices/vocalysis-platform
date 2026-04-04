@@ -491,6 +491,278 @@ function _deterministicScores(features) {
   return { dep: Math.round(dep), anx: Math.round(anx), str: Math.round(str), confScore: 45 };
 }
 
+// ─── ElevenLabs Speech-to-Text Transcription ──────────────────────────────────
+//
+// Uses ElevenLabs Scribe v1 (state-of-the-art multilingual STT) to get
+// high-accuracy transcription with word-level timestamps. The timing data
+// lets us precisely compute speech rate and pause ratio, improving the
+// accuracy of downstream Gemini analysis significantly.
+//
+async function _elevenLabsTranscribe(audioBuffer, mimeType) {
+  const apiKey = process.env.ELEVENLABS_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const FormDataNode = require('form-data');
+    const audioData    = Buffer.isBuffer(audioBuffer)
+      ? audioBuffer
+      : Buffer.from(audioBuffer, 'base64');
+
+    const form = new FormDataNode();
+    // ElevenLabs expects the file with a proper extension for format detection
+    const ext  = (mimeType || 'audio/webm').includes('wav') ? '.wav'
+               : (mimeType || '').includes('mp4')          ? '.mp4'
+               : (mimeType || '').includes('mpeg')         ? '.mp3'
+               : '.webm';
+    form.append('file', audioData, { filename: `audio${ext}`, contentType: mimeType || 'audio/webm' });
+    form.append('model_id', 'scribe_v1');
+    form.append('timestamps_granularity', 'word');
+    form.append('tag_audio_events', 'false');   // skip [laughter] tags, we want pure words
+
+    const response = await axios.post(
+      'https://api.elevenlabs.io/v1/speech-to-text',
+      form,
+      {
+        headers: {
+          ...form.getHeaders(),
+          'xi-api-key': apiKey,
+        },
+        timeout: 60000,
+      }
+    );
+
+    const data = response.data;
+    if (!data || !data.text) return null;
+
+    // Compute duration from last word's end timestamp (seconds)
+    const words    = data.words || [];
+    const lastWord = words[words.length - 1];
+    const duration = lastWord ? (lastWord.end || 0) : 0;
+
+    // Count syllables heuristically (≈ vowel groups per word for Indian languages)
+    const syllableCount = data.text
+      .toLowerCase()
+      .replace(/[^a-z\s]/g, '')
+      .split(/\s+/)
+      .reduce((acc, w) => acc + Math.max(1, (w.match(/[aeiou]+/g) || []).length), 0);
+
+    // Compute pause ratio: total silence / total duration
+    let pauseDuration = 0;
+    for (let i = 1; i < words.length; i++) {
+      const gap = (words[i].start || 0) - (words[i - 1].end || 0);
+      if (gap > 0.15) pauseDuration += gap;   // gaps > 150 ms = intentional pause
+    }
+    const pauseRatio   = duration > 0 ? Math.min(0.95, pauseDuration / duration) : 0.22;
+    const speechRate   = duration > 0 ? syllableCount / duration : 4.4;
+
+    return {
+      text:       data.text,
+      words,
+      duration,
+      syllableCount,
+      speechRate: Math.round(speechRate * 10) / 10,
+      pauseRatio: Math.round(pauseRatio * 100) / 100,
+      language:   data.language_code || 'unknown',
+    };
+  } catch (err) {
+    logger.warn('ElevenLabs STT failed (%s) — proceeding without transcript', err.message);
+    return null;
+  }
+}
+
+// ─── Gemini 1.5 Flash Audio Analysis ─────────────────────────────────────────
+//
+// Sends the raw audio (inline base64) PLUS the ElevenLabs transcript (if
+// available) to Gemini 1.5 Flash for comprehensive clinical voice analysis.
+// Gemini can hear the audio directly, so it captures prosody, vocal quality,
+// and emotional tone that pure transcription misses.
+//
+// Returns { dep, anx, str, confScore, features, scorerUsed } or null on failure.
+//
+async function _geminiAudioAnalysis(audioBuffer, mimeType, elevenLabsResult) {
+  const geminiKey = process.env.VOCOCORE_INFERENCE_KEY;
+  if (!geminiKey) return null;
+
+  try {
+    const { GoogleGenerativeAI } = require('@google/generative-ai');
+    const genAI = new GoogleGenerativeAI(geminiKey);
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-1.5-flash',
+      generationConfig: {
+        responseMimeType: 'application/json',
+        temperature:      0.1,   // low temperature for consistent clinical scoring
+        maxOutputTokens:  1024,
+      },
+    });
+
+    // Base64 audio string (already base64 if it came from job.data)
+    const audioB64 = Buffer.isBuffer(audioBuffer)
+      ? audioBuffer.toString('base64')
+      : audioBuffer;
+
+    const effectiveMime = mimeType || 'audio/webm';
+
+    // Build context section with ElevenLabs data if available
+    let transcriptContext = '';
+    if (elevenLabsResult) {
+      transcriptContext = `
+TRANSCRIPT (ElevenLabs Scribe v1, high-accuracy):
+"${elevenLabsResult.text}"
+
+TIMING-DERIVED ACOUSTIC FEATURES (from word-level timestamps):
+- Speech rate: ${elevenLabsResult.speechRate} syllables/second
+- Pause ratio: ${elevenLabsResult.pauseRatio} (proportion of silence)
+- Total duration: ${elevenLabsResult.duration}s
+- Detected language: ${elevenLabsResult.language}
+- Word count: ${elevenLabsResult.words.length}
+`;
+    }
+
+    const prompt = `You are Cittaa VocoScore™, a clinical voice biomarker analysis engine calibrated for Indian multilingual speakers (Hindi, Tamil, Kannada, Telugu, Malayalam, Marathi, Bengali, English with Indian accent).
+
+Analyze this voice recording for mental health biomarkers. Listen carefully to the actual acoustic qualities — pitch, rhythm, energy, vocal tremor, speech rate, and emotional tone.
+${transcriptContext}
+CLINICAL CALIBRATION:
+- Indian adult baseline: pitch 140–185 Hz, speech rate 3.8–5.2 syl/s, pause ratio 0.16–0.30
+- PHQ-9 equivalent ranges: 0–25=minimal, 25–45=mild, 45–65=moderate, 65–80=mod-severe, 80–100=severe
+- GAD-7 equivalent ranges: 0–20=minimal, 20–40=mild, 40–60=moderate, 60–80=mod-severe, 80–100=severe
+- PSS-10 equivalent ranges: 0–25=low, 25–50=moderate, 50–75=high, 75–100=very high
+- Depression vocal markers: pitch suppression, psychomotor slowing, flat affect, long pauses, low energy
+- Anxiety vocal markers: elevated jitter/shimmer, pitch instability, pressured speech, vocal tension
+- Stress vocal markers: supra-normal energy, rhythm irregularity, sustained pitch elevation
+
+Return ONLY a JSON object (no markdown, no explanation outside JSON) with this exact structure:
+{
+  "depression_score": <integer 0-100>,
+  "anxiety_score": <integer 0-100>,
+  "stress_score": <integer 0-100>,
+  "confidence": <integer 0-100, your confidence in this assessment based on audio quality and clarity>,
+  "features": {
+    "f0_mean": <estimated fundamental frequency in Hz, float>,
+    "f0_std": <pitch variability std, float>,
+    "speech_rate": <syllables per second, float>,
+    "pause_ratio": <0.0-1.0, float>,
+    "energy_mean": <relative RMS energy 0.0-0.2, float>,
+    "energy_std": <energy variability, float>,
+    "jitter": <voice frequency irregularity 0.0-0.1, float>,
+    "shimmer": <amplitude irregularity 0.0-0.2, float>,
+    "hnr": <harmonics-to-noise ratio in dB, float>,
+    "rhythm_regularity": <0.0-1.0, float>
+  },
+  "linguistic_indicators": {
+    "negative_sentiment_ratio": <0.0-1.0>,
+    "absolutist_language": <count of words like "never","always","everything","nothing">,
+    "social_isolation_markers": <count of isolation-related phrases>,
+    "hopelessness_markers": <count of hopelessness/helplessness phrases>
+  },
+  "key_findings": "<1-2 sentence clinical summary of the most prominent voice characteristics observed>"
+}
+
+IMPORTANT: Base scores on what you actually hear. If the voice sounds calm and neutral, give low scores. If you hear clear distress markers, give elevated scores. Be specific and differentiated — avoid clustering all scores near 35.`;
+
+    const result = await model.generateContent([
+      {
+        inlineData: {
+          mimeType: effectiveMime,
+          data:     audioB64,
+        },
+      },
+      { text: prompt },
+    ]);
+
+    const raw  = result.response.text().trim();
+    // Strip markdown code fences if Gemini wraps despite responseMimeType setting
+    const json = raw.replace(/^```json\s*/i, '').replace(/\s*```$/, '').trim();
+    const parsed = JSON.parse(json);
+
+    const dep       = Math.round(Math.max(0, Math.min(100, parsed.depression_score ?? 35)));
+    const anx       = Math.round(Math.max(0, Math.min(100, parsed.anxiety_score    ?? 30)));
+    const str       = Math.round(Math.max(0, Math.min(100, parsed.stress_score     ?? 32)));
+    const conf      = Math.round(Math.max(0, Math.min(100, parsed.confidence       ?? 68)));
+    const features  = parsed.features || {};
+
+    // Override speech_rate and pause_ratio with ElevenLabs precision if available
+    if (elevenLabsResult) {
+      features.speech_rate = elevenLabsResult.speechRate;
+      features.pause_ratio = elevenLabsResult.pauseRatio;
+    }
+
+    logger.info(
+      'Gemini audio analysis complete — dep:%d anx:%d str:%d conf:%d (with_transcript:%s)',
+      dep, anx, str, conf, !!elevenLabsResult
+    );
+
+    return {
+      dep,
+      anx,
+      str,
+      confScore:  conf,
+      features,
+      scorerUsed: elevenLabsResult ? 'gemini_elevenlabs' : 'gemini_audio',
+      keyFindings: parsed.key_findings,
+      linguisticIndicators: parsed.linguistic_indicators,
+    };
+  } catch (err) {
+    logger.warn('Gemini audio analysis failed (%s)', err.message);
+    return null;
+  }
+}
+
+// ─── AI Audio Fallback Orchestrator ──────────────────────────────────────────
+//
+// Tier 3 fallback when VocoCore is unavailable.
+//
+// Voice biomarker layer (primary — scores driven by acoustic signal):
+//   Tier 3a: Gemini 1.5 Flash audio-only → directly analyses the raw audio
+//            waveform for pitch, rhythm, energy, vocal quality, prosody.
+//
+// Text/linguistic layer (secondary — only invoked if voice analysis fails):
+//   Tier 3b: ElevenLabs Scribe v1 STT → high-accuracy transcript + word
+//            timestamps → speech rate, pause ratio extracted from timing.
+//   Tier 3c: Gemini with transcript context → voice + linguistic pattern
+//            analysis for combined accuracy.
+//
+// Tier 4: Deterministic → last resort (confScore ≤ 45, flags for manual review).
+//
+async function _aiFallback(audioBuffer, mimeType, existingFeatures) {
+  // ── Tier 3a: Gemini pure audio analysis (voice biomarker layer) ───────────
+  logger.info('AI Fallback Tier 3a — Gemini 1.5 Flash voice-only analysis');
+  const geminiVoice = await _geminiAudioAnalysis(audioBuffer, mimeType, null);
+  if (geminiVoice) {
+    logger.info('Tier 3a succeeded — dep:%d anx:%d str:%d scorer:%s',
+      geminiVoice.dep, geminiVoice.anx, geminiVoice.str, geminiVoice.scorerUsed);
+    return geminiVoice;
+  }
+
+  // ── Tier 3b: ElevenLabs STT (text/linguistic layer fallback) ─────────────
+  logger.info('AI Fallback Tier 3b — ElevenLabs STT for text-layer analysis');
+  const transcript = await _elevenLabsTranscribe(audioBuffer, mimeType);
+  if (transcript) {
+    logger.info('ElevenLabs STT succeeded — lang:%s rate:%d pause:%d',
+      transcript.language, transcript.speechRate, transcript.pauseRatio);
+
+    // ── Tier 3c: Gemini with transcript (voice + linguistic combined) ───────
+    logger.info('AI Fallback Tier 3c — Gemini analysis with transcript context');
+    const geminiWithText = await _geminiAudioAnalysis(audioBuffer, mimeType, transcript);
+    if (geminiWithText) {
+      logger.info('Tier 3c succeeded — dep:%d anx:%d str:%d scorer:%s',
+        geminiWithText.dep, geminiWithText.anx, geminiWithText.str, geminiWithText.scorerUsed);
+      return geminiWithText;
+    }
+  }
+
+  // ── Tier 4: Deterministic (last resort) ───────────────────────────────────
+  logger.warn('AI Fallback — all AI tiers failed. Using deterministic scoring.');
+  const features = { ...existingFeatures };
+  if (transcript) {
+    // Use ElevenLabs timing-derived features to make deterministic less generic
+    features.speech_rate = transcript.speechRate;
+    features.pause_ratio = transcript.pauseRatio;
+  }
+  const det = _deterministicScores(features);
+  return { ...det, features, scorerUsed: 'deterministic_fallback' };
+}
+
 // ─── Main processor ───────────────────────────────────────────────────────────
 
 module.exports = async function audioAnalysisProcessor(job) {
@@ -570,17 +842,30 @@ module.exports = async function audioAnalysisProcessor(job) {
             logger.info('VocoCore /fallback succeeded — dep:%d anx:%d str:%d', dep, anx, str);
           }
         } catch (fbErr) {
-          logger.warn('VocoCore /fallback also failed (%s). Using deterministic scoring.', fbErr.message);
-          const det = _deterministicScores(featuresData);
-          dep = det.dep; anx = det.anx; str = det.str; confScore = det.confScore;
-          scorerUsed = 'deterministic_fallback';
+          logger.warn('VocoCore /fallback also failed (%s). Escalating to AI fallback pipeline.', fbErr.message);
+          const aiResult = await _aiFallback(audioData, job.data.mimeType || 'audio/webm', featuresData);
+          dep        = aiResult.dep;
+          anx        = aiResult.anx;
+          str        = aiResult.str;
+          confScore  = aiResult.confScore;
+          scorerUsed = aiResult.scorerUsed;
+          if (aiResult.features && Object.keys(aiResult.features).length > 0) {
+            featuresData = { ...featuresData, ...aiResult.features };
+          }
         }
       }
     } else {
-      // No VocoCore URL configured — use deterministic scoring
-      const det = _deterministicScores({});
-      dep = det.dep; anx = det.anx; str = det.str; confScore = det.confScore;
-      logger.warn('VOCOCORE_SERVICE_URL not set — using deterministic scoring');
+      // No VocoCore URL configured — go straight to AI fallback pipeline
+      logger.warn('VOCOCORE_SERVICE_URL not set — escalating to AI fallback pipeline');
+      const aiResult = await _aiFallback(audioData, job.data.mimeType || 'audio/webm', {});
+      dep        = aiResult.dep;
+      anx        = aiResult.anx;
+      str        = aiResult.str;
+      confScore  = aiResult.confScore;
+      scorerUsed = aiResult.scorerUsed;
+      if (aiResult.features && Object.keys(aiResult.features).length > 0) {
+        featuresData = aiResult.features;
+      }
     }
 
     // ── Step 2: Build canonical result fields ─────────────────────────────────
