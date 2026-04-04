@@ -1,0 +1,16 @@
+flask==3.0.0
+gunicorn==21.2.0
+huggingface_hub==0.23.0
+# PyTorch CPU — keeps image lean on Railway (no GPU needed for Whisper inference)
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.2.0+cpu
+torchaudio==2.2.0+cpu
+# Whisper backbone (DAM is fine-tuned on top of openai-whisper)
+openai-whisper==20231117
+# Audio I/O
+soundfile==0.12.1
+librosa==0.10.1
+numpy==1.26.4
+scipy==1.13.0
+pydub==0.25.1
+python-dotenv==1.0.0

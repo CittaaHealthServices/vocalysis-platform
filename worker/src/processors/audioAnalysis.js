@@ -491,6 +491,71 @@ function _deterministicScores(features) {
   return { dep: Math.round(dep), anx: Math.round(anx), str: Math.round(str), confScore: 45 };
 }
 
+// ─── Kintsugi DAM Analysis ────────────────────────────────────────────────────
+//
+// Calls the kintsugi-service microservice which wraps the open-sourced
+// KintsugiHealth/dam model — the first speech-only model to receive FDA
+// De Novo clearance for clinical-grade mental health screening from voice.
+//
+// Architecture: Whisper backbone + multi-task head, fine-tuned on ~35,000
+// individuals (~863 hours of speech) against clinician-administered PHQ-9
+// and GAD-7 ground truth. Published in Annals of Family Medicine (Jan 2025).
+//
+// Returns { dep, anx, str, confScore, scorerUsed } or null on failure.
+//
+async function _kintsugiAnalysis(audioData, mimeType) {
+  const serviceUrl  = process.env.KINTSUGI_SERVICE_URL;
+  const internalKey = process.env.KINTSUGI_INTERNAL_KEY || 'kintsugi-dev-key';
+  if (!serviceUrl) return null;
+
+  try {
+    const FormDataNode = require('form-data');
+    const form         = new FormDataNode();
+
+    // audioData is a Buffer (already decoded from base64 at this point)
+    const ext = (mimeType || 'audio/webm').includes('wav')  ? '.wav'
+              : (mimeType || '').includes('mp4')            ? '.mp4'
+              : (mimeType || '').includes('mpeg')           ? '.mp3'
+              : '.webm';
+    form.append('audio', audioData, { filename: `audio${ext}`, contentType: mimeType || 'audio/webm' });
+
+    const response = await axios.post(`${serviceUrl}/analyze`, form, {
+      headers: {
+        ...form.getHeaders(),
+        'X-Kintsugi-Internal-Key': internalKey,
+      },
+      timeout: 180000,   // DAM inference on CPU can take up to 60s for long audio
+      maxContentLength: Infinity,
+      maxBodyLength:    Infinity,
+    });
+
+    if (!response.data?.success || !response.data?.scores) {
+      throw new Error(response.data?.error || 'Kintsugi DAM returned no scores');
+    }
+
+    const s = response.data.scores;
+    logger.info(
+      'Kintsugi DAM — dep:%d anx:%d str:%d conf:%d phq9:%s gad7:%s (%dms)',
+      s.depression_score, s.anxiety_score, s.stress_score, s.confidence,
+      s.phq9_category, s.gad7_category, s.inference_ms || 0
+    );
+
+    return {
+      dep:       Math.round(s.depression_score),
+      anx:       Math.round(s.anxiety_score),
+      str:       Math.round(s.stress_score),
+      confScore: Math.round(s.confidence),
+      scorerUsed: 'kintsugi_dam',
+      // Clinical scale labels for the session record
+      _phq9Category: s.phq9_category,
+      _gad7Category: s.gad7_category,
+    };
+  } catch (err) {
+    logger.warn('Kintsugi DAM failed (%s)', err.message);
+    return null;
+  }
+}
+
 // ─── ElevenLabs Speech-to-Text Transcription ──────────────────────────────────
 //
 // Uses ElevenLabs Scribe v1 (state-of-the-art multilingual STT) to get
@@ -842,29 +907,57 @@ module.exports = async function audioAnalysisProcessor(job) {
             logger.info('VocoCore /fallback succeeded — dep:%d anx:%d str:%d', dep, anx, str);
           }
         } catch (fbErr) {
-          logger.warn('VocoCore /fallback also failed (%s). Escalating to AI fallback pipeline.', fbErr.message);
-          const aiResult = await _aiFallback(audioData, job.data.mimeType || 'audio/webm', featuresData);
-          dep        = aiResult.dep;
-          anx        = aiResult.anx;
-          str        = aiResult.str;
-          confScore  = aiResult.confScore;
-          scorerUsed = aiResult.scorerUsed;
-          if (aiResult.features && Object.keys(aiResult.features).length > 0) {
-            featuresData = { ...featuresData, ...aiResult.features };
+          logger.warn('VocoCore /fallback also failed (%s). Trying Kintsugi DAM…', fbErr.message);
+
+          // ── Tier 3: Kintsugi DAM (FDA-cleared open-source voice biomarker model)
+          const kintsugiResult = await _kintsugiAnalysis(audioData, job.data.mimeType || 'audio/webm');
+          if (kintsugiResult) {
+            dep        = kintsugiResult.dep;
+            anx        = kintsugiResult.anx;
+            str        = kintsugiResult.str;
+            confScore  = kintsugiResult.confScore;
+            scorerUsed = kintsugiResult.scorerUsed;
+            // Store clinical category labels for the session document
+            if (kintsugiResult._phq9Category) job.data._phq9Category = kintsugiResult._phq9Category;
+            if (kintsugiResult._gad7Category) job.data._gad7Category = kintsugiResult._gad7Category;
+          } else {
+            // ── Tier 4+: Gemini / ElevenLabs+Gemini / Deterministic ──────────
+            logger.warn('Kintsugi DAM unavailable. Escalating to AI fallback pipeline.');
+            const aiResult = await _aiFallback(audioData, job.data.mimeType || 'audio/webm', featuresData);
+            dep        = aiResult.dep;
+            anx        = aiResult.anx;
+            str        = aiResult.str;
+            confScore  = aiResult.confScore;
+            scorerUsed = aiResult.scorerUsed;
+            if (aiResult.features && Object.keys(aiResult.features).length > 0) {
+              featuresData = { ...featuresData, ...aiResult.features };
+            }
           }
         }
       }
     } else {
-      // No VocoCore URL configured — go straight to AI fallback pipeline
-      logger.warn('VOCOCORE_SERVICE_URL not set — escalating to AI fallback pipeline');
-      const aiResult = await _aiFallback(audioData, job.data.mimeType || 'audio/webm', {});
-      dep        = aiResult.dep;
-      anx        = aiResult.anx;
-      str        = aiResult.str;
-      confScore  = aiResult.confScore;
-      scorerUsed = aiResult.scorerUsed;
-      if (aiResult.features && Object.keys(aiResult.features).length > 0) {
-        featuresData = aiResult.features;
+      // No VocoCore URL — try Kintsugi DAM first, then AI fallback pipeline
+      logger.warn('VOCOCORE_SERVICE_URL not set — trying Kintsugi DAM…');
+      const kintsugiResult = await _kintsugiAnalysis(audioData, job.data.mimeType || 'audio/webm');
+      if (kintsugiResult) {
+        dep        = kintsugiResult.dep;
+        anx        = kintsugiResult.anx;
+        str        = kintsugiResult.str;
+        confScore  = kintsugiResult.confScore;
+        scorerUsed = kintsugiResult.scorerUsed;
+        if (kintsugiResult._phq9Category) job.data._phq9Category = kintsugiResult._phq9Category;
+        if (kintsugiResult._gad7Category) job.data._gad7Category = kintsugiResult._gad7Category;
+      } else {
+        logger.warn('Kintsugi DAM unavailable. Escalating to AI fallback pipeline.');
+        const aiResult = await _aiFallback(audioData, job.data.mimeType || 'audio/webm', {});
+        dep        = aiResult.dep;
+        anx        = aiResult.anx;
+        str        = aiResult.str;
+        confScore  = aiResult.confScore;
+        scorerUsed = aiResult.scorerUsed;
+        if (aiResult.features && Object.keys(aiResult.features).length > 0) {
+          featuresData = aiResult.features;
+        }
       }
     }
 
