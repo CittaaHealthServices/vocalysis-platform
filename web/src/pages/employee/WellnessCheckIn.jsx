@@ -402,8 +402,8 @@ export const WellnessCheckIn = () => {
               </motion.div>
               <h2 className="text-2xl font-bold text-app mb-3">Analyzing Your Wellness</h2>
               <ProcessingWaveform />
-              <p className="text-gray-500 mt-6 mb-1">Running voice analysis with VocoCore AI...</p>
-              <p className="text-sm text-gray-400">Usually takes 30–60 seconds</p>
+              <p className="text-gray-500 mt-6 mb-1">Analysing your voice biomarkers...</p>
+              <p className="text-sm text-gray-400">Usually takes 30–90 seconds — please stay on this page</p>
               <div className="mt-8 grid grid-cols-3 gap-3">
                 {['Acoustic Features', 'ML Inference', 'Wellness Scoring'].map((label, i) => (
                   <motion.div
