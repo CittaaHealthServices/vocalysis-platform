@@ -1,77 +1,130 @@
-# Vocalysis Platform 2.0
+# Vocalysis Platform 2.1
 ### Clinical Voice Biomarker Analysis Platform
 **By Cittaa Health Services Private Limited, Hyderabad, India**
 
-**Status Badges:** Node.js 20 | Python 3.11 | React 18 | MongoDB | Railway Deployment
+[![Status](https://img.shields.io/badge/status-production-brightgreen)](https://api.mindbridge.cittaa.in/v1/health)
+[![Node.js](https://img.shields.io/badge/node-20-blue)](https://nodejs.org)
+[![Python](https://img.shields.io/badge/python-3.11-blue)](https://python.org)
+[![React](https://img.shields.io/badge/react-18-61DAFB)](https://react.dev)
+[![Railway](https://img.shields.io/badge/deployed-railway-purple)](https://railway.app)
 
-> Vocalysis is a multi-tenant clinical platform that analyzes acoustic biomarkers
-> in voice to support mental health assessment across hospitals, schools, and corporations.
-> Powered by VocaCore™ Engine.
+> Vocalysis is a multi-tenant B2B SaaS platform that analyses acoustic biomarkers in voice
+> to deliver clinical-grade mental health screening (PHQ-9, GAD-7, PSS-10) at enterprise scale.
+> Designed and calibrated for India's multilingual workforce.
+
+---
+
+## Live Production Services
+
+| Service | URL | Status |
+|---------|-----|--------|
+| Web App | https://app.vocalysis.cittaa.in | ✅ Live |
+| API Gateway | https://api.mindbridge.cittaa.in | ✅ Live |
+| VocoCore™ Engine | https://ml.mindbridge.cittaa.in | ✅ Live |
+| Voice AI Service | Internal Railway service | ✅ Live |
 
 ---
 
 ## Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Frontend (React + Vite)                  │
-│                  vocalysis-web (Port 5173)                  │
-└────────────────────┬────────────────────────────────────────┘
-                     │ HTTPS
-┌────────────────────▼────────────────────────────────────────┐
-│                  API Gateway (Express)                       │
-│         vocalysis-api (Port 3001) — Railway Load Balancer   │
-├─────────────────────┬──────────────────────┬─────────────────┤
-│                     │                      │                 │
-│            ┌────────▼────────┐   ┌────────▼────────┐         │
-│            │ MongoDB Atlas   │   │   Redis Cache   │         │
-│            │   (Shared)      │   │    (Shared)     │         │
-│            └─────────────────┘   └─────────────────┘         │
-│                                                               │
-│   ┌──────────────────────┐    ┌──────────────────────┐       │
-│   │  Bull Work Queue     │    │   Session Handler    │       │
-│   │  (Jobs Processor)    │    │   (WebSocket)        │       │
-│   └──────────────────────┘    └──────────────────────┘       │
-└───────────┬──────────────────────────────────────────────────┘
-            │
-    ┌───────┼───────┬──────────────┐
-    │       │       │              │
-    │  ┌────▼───┐  ┌▼─────┐   ┌───▼────┐
-    │  │ Worker │  │HC    │   │VocaCore│
-    │  │Service │  │Check │   │Engine  │
-    │  │        │  │      │   │        │
-    │  └────────┘  └──────┘   └────────┘
-    │  (Async)    (Monitor)   (AI/ML)
-    │
-    └─ Background Jobs: email, webhooks, analytics
+┌─────────────────────────────────────────────────────────────────┐
+│                    Frontend (React 18 + Vite)                    │
+│               app.vocalysis.cittaa.in  (Railway)                │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │ HTTPS
+┌──────────────────────────▼──────────────────────────────────────┐
+│              API Gateway  (Express + Node.js 20)                 │
+│             api.mindbridge.cittaa.in  (Railway)                  │
+│                                                                  │
+│  ┌──────────────────┐  ┌─────────────────┐  ┌───────────────┐  │
+│  │  MongoDB Atlas   │  │  Redis (Bull)   │  │  JWT + DPDP   │  │
+│  │  Multi-tenant    │  │  Job Queues     │  │  Auth Layer   │  │
+│  └──────────────────┘  └─────────────────┘  └───────────────┘  │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │ Internal queues
+┌──────────────────────────▼──────────────────────────────────────┐
+│              Worker Service  (Node.js 20 + Bull)                 │
+│                        (Railway)                                 │
+│                                                                  │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │              Voice Analysis Fallback Chain                  │ │
+│  │                                                            │ │
+│  │  Tier 1: VocoCore™  →  96.4% accuracy, Indian ML ensemble │ │
+│  │  Tier 2: VocoCore™ /fallback  →  Deterministic scorer     │ │
+│  │  Tier 3: Cittaa Voice AI  →  FDA-research voice biomarker  │ │
+│  │  Tier 4: Gemini AI  →  LLM-based acoustic analysis        │ │
+│  │  Tier 5: Deterministic  →  Rule-based fallback            │ │
+│  └────────────────────────────────────────────────────────────┘ │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │
+    ┌──────────────────────┼─────────────────────┐
+    │                      │                      │
+    ▼                      ▼                      ▼
+┌────────────┐    ┌─────────────────┐    ┌────────────────┐
+│ VocoCore™  │    │  Cittaa Voice   │    │  Healthcheck   │
+│  Engine    │    │  AI Service     │    │  Monitor       │
+│  (Python)  │    │  (Python)       │    │  (Node.js)     │
+│  Flask +   │    │  Flask +        │    │                │
+│  gunicorn  │    │  gunicorn       │    │                │
+│            │    │                 │    │                │
+│ ml.mind-   │    │  Internal URL   │    │ status.vocal-  │
+│ bridge.    │    │  (Railway)      │    │ ysis.cittaa.in │
+│ cittaa.in  │    │                 │    │                │
+└────────────┘    └─────────────────┘    └────────────────┘
 ```
 
 ---
 
 ## Services
 
-| Service | Tech Stack | Purpose | Port | Scaling |
-|---------|------------|---------|------|---------|
-| **vocalysis-web** | React 18 + Vite + Tailwind | Frontend SPA | 5173 | CDN + Railway instances |
-| **vocalysis-api** | Node.js 20 + Express | REST API + Auth | 3001 | Railway auto-scaling |
-| **vocalysis-vococore** | Python 3.11 + Flask | Audio feature extraction | 5001 | 1-2 instances |
-| **vocalysis-worker** | Node.js 20 + Bull | Async job processor | (internal) | Railway auto-scaling |
-| **vocalysis-healthcheck** | Node.js 20 + Express | Platform monitoring | 4000 | Always-on |
+| Service | Tech Stack | Purpose | Railway Service |
+|---------|------------|---------|-----------------|
+| **vocalysis-web** | React 18 + Vite + Tailwind | Frontend SPA | vocalysis-platform |
+| **vocalysis-api** | Node.js 20 + Express | REST API + Auth | vocalysis-platform |
+| **vococore** | Python 3.11 + Flask + scikit-learn | VocoCore™ ML inference | merry-tranquility |
+| **vocalysis-worker** | Node.js 20 + Bull | Async job processor + voice analysis | vocalysis-platform |
+| **voice-ai-service** | Python 3.11 + Flask + PyTorch | Cittaa proprietary voice biomarker AI | radiant-bravery |
+| **healthcheck** | Node.js 20 + Express | Platform monitoring | vocalysis-platform |
+
+---
+
+## VocoCore™ Engine
+
+Cittaa's proprietary acoustic intelligence engine. Built from the ground up for the Indian multilingual workforce.
+
+**Model Performance:**
+- **Accuracy:** 96.4% on Indian mental health screening
+- **F1 Score:** 96.45%  |  **AUC:** 0.9955
+- **Training Data:** 12,000+ Indian voice samples
+- **Languages:** Hindi, Telugu, Tamil, Kannada, Indian English
+- **Demographics:** Blue-collar 40% | White-collar 40% | Mixed 20%
+
+**Clinical Outputs (VocoScale™):**
+
+| Scale | Measures | Range |
+|-------|----------|-------|
+| PHQ-9 | Depression severity | 0 – 27 |
+| GAD-7 | Anxiety severity | 0 – 21 |
+| PSS-10 | Stress / allostatic load | 0 – 40 |
+
+**Voice Analysis Pipeline:**
+1. 68 acoustic biomarkers extracted per session
+2. Language auto-detection (10 Indian languages)
+3. Per-language calibration applied (Indian norms, not Western defaults)
+4. Ensemble ML inference (XGBoost + RandomForest voting)
+5. VocoScale™ clinical score mapping
 
 ---
 
 ## Prerequisites
 
-Before you start, you'll need:
-
 - **Node.js 20+** — [nodejs.org](https://nodejs.org)
 - **Python 3.11+** — [python.org](https://www.python.org)
 - **MongoDB Atlas** — Free tier at [mongodb.com/cloud](https://mongodb.com/cloud)
+- **Redis** — Local or Railway plugin
 - **Railway Account** — [railway.app](https://railway.app)
-- **Google Cloud Project** — For Calendar and Meet integration
-  - Enable: Google Calendar API, Google Meet API
-  - Create OAuth 2.0 credentials
-- **Gemini API Key** — Store in `VOCOCORE_INFERENCE_KEY`
+- **Gemini API Key** — For Tier 4 AI fallback (`VOCOCORE_INFERENCE_KEY`)
 - **Gmail App Password** — For SMTP notifications
 
 ---
@@ -86,430 +139,222 @@ cd vocalysis-platform
 
 ### Step 2: Start Infrastructure
 ```bash
-# Start MongoDB and Redis with Docker Compose
 docker-compose -f infra/docker-compose.yml up -d mongodb redis
 ```
 
-### Step 3: Setup VocaCore Engine (Python)
+### Step 3: Setup VocoCore™ Engine (Python)
 ```bash
 cd vococore
-
-# Create virtual environment
 python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+source venv/bin/activate
 
-# Install dependencies
 pip install -r requirements.txt
 
-# Copy environment template
-cp .env.example .env
-# Edit .env and fill in VOCOCORE_INTERNAL_KEY
-
 # Start service
-flask run --port 5001
+gunicorn app:app --config gunicorn.conf.py
+# Or for dev:
+flask run --port 8080
 ```
 
-### Step 4: Setup API Server (Node.js) — New Terminal
+### Step 4: Setup API Server
 ```bash
 cd api
-
-# Install dependencies
 npm ci
-
-# Copy environment template
 cp .env.example .env
-# Edit .env with MongoDB URI, Redis URL, secrets, etc.
+# Edit .env — fill MongoDB URI, Redis URL, secrets
 
-# Create database indexes
 node ../infra/migrations/001_create_indexes.js
-
-# Start development server
 npm run dev
 ```
 
-### Step 5: Setup Frontend (React) — New Terminal
+### Step 5: Setup Worker
+```bash
+cd worker
+npm ci
+cp .env.example .env
+# Edit .env — same as API
+npm start
+```
+
+### Step 6: Setup Frontend
 ```bash
 cd web
-
-# Install dependencies
 npm ci
-
-# Copy environment template
 cp .env.example .env
 # Edit VITE_API_URL if needed (default: http://localhost:3001)
-
-# Start dev server
 npm run dev
 ```
 
 ### Verify Everything Works
 ```bash
-# Check API health
-curl http://localhost:3001/v1/health
-
-# Check VocaCore
-curl http://localhost:5001/health
-
-# Open browser
+curl http://localhost:3001/v1/health     # API
+curl http://localhost:8080/health        # VocoCore
 # Web: http://localhost:5173
-# API Docs: http://localhost:3001/docs
 ```
 
 ---
 
 ## Railway Production Deployment
 
-### Prerequisites
-- GitHub repository with all code pushed
-- Railway account linked to GitHub
-- MongoDB Atlas cluster created
-- All environment variables ready
+### Services to Deploy
 
-### Step-by-Step Deployment
+| Directory | Service Name | Root Directory |
+|-----------|-------------|----------------|
+| `api/` | API Gateway | `api` |
+| `worker/` | Worker Service | `worker` |
+| `web/` | Frontend | `web` |
+| `vococore/` | VocoCore™ Engine | `vococore` |
+| `kintsugi-service/` | Voice AI Service | `kintsugi-service` |
+| `healthcheck/` | Healthcheck | `healthcheck` |
 
-#### 1. Create Railway Project
-```bash
-# Go to railway.app and create new project
-# Select "Deploy from GitHub"
-# Authorize GitHub and select this repository
-```
+### Key Environment Variables
 
-#### 2. Add Services
-In Railway dashboard, add 5 services:
-- **vocalysis-web** — `/web` directory
-- **vocalysis-api** — `/api` directory
-- **vocalysis-vococore** — `/vococore` directory
-- **vocalysis-worker** — `/worker` directory
-- **vocalysis-healthcheck** — `/healthcheck` directory
-
-#### 3. Add Databases
-```
-# Add MongoDB Atlas (external)
-# Add Redis (Railway plugin)
-```
-
-#### 4. Configure Environment Variables
-For each service, set variables from `.env.example` files:
-
-**API Service:**
-```
-MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/vocalysis
-REDIS_URL=redis://[redis-private-url]
+**Worker & API Services:**
+```env
+MONGODB_URI=mongodb+srv://...
+REDIS_URL=redis://...
 JWT_ACCESS_SECRET=[64-byte hex]
 JWT_REFRESH_SECRET=[64-byte hex]
 ENCRYPTION_KEY=[32-byte hex]
-VOCOCORE_INTERNAL_KEY=[32 chars]
-VOCOCORE_INFERENCE_KEY=[your-gemini-api-key]
-VOCOCORE_SERVICE_URL=http://vocalysis-vococore.railway.internal:5001
-CLIENT_URL=https://vocalysis.cittaa.in
-CORS_ALLOWED_ORIGINS=https://vocalysis.cittaa.in
-GOOGLE_CLIENT_ID=[from Google Cloud]
-GOOGLE_CLIENT_SECRET=[from Google Cloud]
-GOOGLE_REDIRECT_URI=https://api.vocalysis.cittaa.in/auth/google/callback
-SMTP_HOST=smtp.gmail.com
-SMTP_USER=noreply@cittaa.in
-SMTP_PASS=[gmail-app-password]
-EMAIL_FROM=noreply@vocalysis.cittaa.in
-ALERT_EMAIL_TO=sairam@cittaa.in,rohan@cittaa.in
-BULL_BOARD_PASSWORD=[strong-password]
+VOCOCORE_INTERNAL_KEY=[shared secret]
+VOCOCORE_SERVICE_URL=https://ml.mindbridge.cittaa.in
+VOCOCORE_INFERENCE_KEY=[gemini-api-key]
+KINTSUGI_SERVICE_URL=[voice-ai-service-railway-url]
+KINTSUGI_INTERNAL_KEY=[voice-ai-internal-secret]
+CLIENT_URL=https://app.vocalysis.cittaa.in
 ```
 
-**VocaCore Service:**
-```
-VOCOCORE_INTERNAL_KEY=[same as API]
-FLASK_ENV=production
-```
-
-**Worker Service:**
-```
-[Same as API, omit PORT]
+**VocoCore™ Service:**
+```env
+VOCOCORE_INTERNAL_KEY=[same as above]
+GUNICORN_WORKERS=1
+GUNICORN_THREADS=2
+ELEVENLABS_API_KEY=[optional — enables auto-retraining]
 ```
 
-**Healthcheck Service:**
-```
-MONGODB_URI=[same as API]
-REDIS_URL=[same as API]
-API_URL=https://api.vocalysis.cittaa.in
-VOCOCORE_URL=http://vocalysis-vococore.railway.internal:5001
-ALERT_EMAIL_TO=sairam@cittaa.in,rohan@cittaa.in
-SMTP_HOST=smtp.gmail.com
-SMTP_USER=noreply@cittaa.in
-SMTP_PASS=[gmail-app-password]
+**Voice AI Service:**
+```env
+KINTSUGI_INTERNAL_KEY=[same as above]
+PORT=8001
 ```
 
-#### 5. Run Database Migration
+### Generate Secrets
 ```bash
-# In Railway dashboard, go to API service
-# Open Railway CLI and run:
-railway run node infra/migrations/001_create_indexes.js
+node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"  # JWT secrets
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"  # Encryption key
 ```
-
-#### 6. Configure Custom Domains
-```
-vocalysis-web.railway.app → vocalysis.cittaa.in
-vocalysis-api.railway.app → api.vocalysis.cittaa.in
-vocalysis-healthcheck.railway.app → status.vocalysis.cittaa.in
-```
-
-#### 7. Monitor Deployment
-- Check logs in Railway dashboard
-- Verify API health: https://api.vocalysis.cittaa.in/v1/health
-- Test login flow in web app
-- Check Bull board: https://api.vocalysis.cittaa.in/admin/queues
 
 ---
 
-## Google Calendar & Meet Integration
+## Voice Analysis Fallback Chain
 
-### Setup in Google Cloud Console
+When a voice session is submitted, the worker attempts each tier in sequence:
 
-1. **Create Project**
-   - Go to https://console.cloud.google.com
-   - New Project → "Vocalysis Platform"
-
-2. **Enable APIs**
-   - Search "Google Calendar API" → Enable
-   - Search "Google Meet API" → Enable
-
-3. **Create OAuth 2.0 Credentials**
-   - Go to APIs & Services → Credentials
-   - Create OAuth 2.0 Client ID (Web Application)
-   - Authorized Redirect URIs:
-     ```
-     https://api.vocalysis.cittaa.in/auth/google/callback
-     http://localhost:3001/auth/google/callback
-     ```
-
-4. **Copy to Environment**
-   ```env
-   GOOGLE_CLIENT_ID=<your-client-id>
-   GOOGLE_CLIENT_SECRET=<your-client-secret>
-   ```
-
-### Users Can Now
-- Sync calendar events for consultation scheduling
-- Join Google Meet directly from Vocalysis
-- Grant offline access for background sync
-
----
-
-## Environment Variables Reference
-
-### API (.env)
-See `api/.env.example` for all variables with descriptions.
-
-**Critical Variables:**
-- `MONGODB_URI` — MongoDB Atlas connection string
-- `VOCOCORE_INFERENCE_KEY` — The inference engine API key (Gemini)
-- `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` — Generate with:
-  ```bash
-  node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
-  ```
-- `ENCRYPTION_KEY` — Generate with:
-  ```bash
-  node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-  ```
-
-### VocaCore (Python)
-See `vococore/.env.example`
-
-### Worker (Node.js)
-See `worker/.env.example`
-
-### Healthcheck (Node.js)
-See `healthcheck/.env.example`
-
-### Web (Frontend)
-See `web/.env.example`
-
----
-
-## ML Model Training
-
-For advanced users: Train custom SOTA models using your own datasets.
-
-```bash
-cd vococore/training
-
-# Install training dependencies
-pip install -r requirements.txt
-
-# Download datasets (requires Kaggle API key in ~/.kaggle/kaggle.json)
-python datasets/downloader.py --all
-
-# Train WavLM-based model
-python train_sota.py --backbone wavlm --datasets all --epochs 50
-
-# Evaluate model
-python evaluate.py --model-path models/latest.pth
-
-# Convert to ONNX for inference
-python convert_to_onnx.py --model-path models/latest.pth
 ```
+1. VocoCore™ /score        → Indian ML ensemble (96.4% acc)
+      ↓ (on failure)
+2. VocoCore™ /fallback     → Deterministic acoustic scoring
+      ↓ (on failure)
+3. Cittaa Voice AI          → Proprietary voice biomarker model
+      ↓ (on failure)
+4. Gemini AI                → LLM-based acoustic + linguistic analysis
+      ↓ (on failure)
+5. Deterministic fallback   → Rule-based scoring (always succeeds)
+```
+
+Each tier logs `scorerUsed` on the session document for audit and quality tracking.
 
 ---
 
 ## User Roles & Permissions
 
 | Role | Access Level | Use Case |
-|------|--------------|----------|
-| **CITTAA_SUPER_ADMIN** | Full platform | Cittaa staff only; requires IP whitelist |
-| **COMPANY_ADMIN** | Own tenant all features | HR/Admin for one company |
-| **HR_ADMIN** | Department view (anonymized) | View team wellness trends only |
-| **SENIOR_CLINICIAN** | All patients (clinical access) | Psychiatrist at hospital |
-| **CLINICAL_PSYCHOLOGIST** | Assigned patients only | Therapist seeing specific people |
+|------|-------------|---------|
+| **CITTAA_SUPER_ADMIN** | Full platform | Cittaa staff only |
+| **COMPANY_ADMIN** | Own tenant, all features | HR/Admin for one company |
+| **HR_ADMIN** | Anonymised department view | Team wellness trends |
+| **SENIOR_CLINICIAN** | All patients in tenant | Psychiatrist |
+| **CLINICAL_PSYCHOLOGIST** | Assigned patients only | Therapist |
 | **EMPLOYEE** | Own wellness data | Self-service check-ins |
-| **API_CLIENT** | White-label API | Partner apps via API key |
+| **API_CLIENT** | White-label API | Partner apps |
 
 **Permission Model:**
 - Row-level: Always filtered by `tenantId`
-- Column-level: HR roles see names + wellness category only
-- Clinical data: Only accessible to clinicians with explicit access grant
+- HR roles: Anonymised names + wellness category only
+- Clinical data: Clinicians with explicit access grant only
+- Audio: Deleted immediately after feature extraction — zero raw audio stored
 
 ---
 
-## API Documentation
+## Security
 
-### Live Docs (when deployed)
-- **OpenAPI/Swagger:** https://api.vocalysis.cittaa.in/docs
-- **ReDoc:** https://api.vocalysis.cittaa.in/redoc
-
-### Key Endpoints
-```
-GET    /v1/health                — Service health check
-POST   /v1/auth/login            — User login
-POST   /v1/auth/logout           — Logout with refresh token rotation
-POST   /v1/sessions              — Submit voice assessment
-GET    /v1/sessions/:id/results  — Get analysis results
-POST   /v1/consultations         — Book consultation with clinician
-GET    /v1/calendar/events       — Fetch synced calendar events
-POST   /v1/whatsapp/webhook      — WhatsApp bot webhook (Phase 2)
-```
-
-See API service `/docs` endpoint for full OpenAPI spec.
+- JWT + httpOnly refresh cookies with rotation
+- bcrypt password hashing (12 rounds)
+- TOTP MFA for super admin
+- DPDP Act 2023 compliant — no raw audio stored, zero transcription
+- Rate limiting: 100 req/min per IP
+- All user actions audit-logged
 
 ---
 
-## Security Features
+## API Reference
 
-- **Authentication:** JWT with httpOnly refresh cookies
-- **Password Hashing:** bcrypt 12 rounds
-- **MFA:** TOTP for super admin accounts
-- **Audit Logging:** All user actions logged with timestamps
-- **Data Privacy:** DPDP Act 2023 compliant
-  - Audio files deleted immediately after ML feature extraction
-  - Zero transcription — voice biomarkers only
-  - No raw audio stored
-- **Rate Limiting:** 100 requests/minute per IP
-- **CORS:** Strict origin validation
-- **API Keys:** Hashed storage with rotation support
+**Live Docs (production):** https://api.mindbridge.cittaa.in/docs
+
+```
+GET  /v1/health                  — Service health
+POST /v1/auth/login              — Login
+POST /v1/sessions                — Submit voice assessment
+GET  /v1/sessions/:id/results    — Get analysis results
+POST /v1/consultations           — Book clinician consultation
+GET  /v1/reports/wellness        — Tenant wellness report
+POST /v1/admin/session-feedback  — Clinician PHQ-9/GAD-7 feedback
+```
 
 ---
 
 ## Troubleshooting
 
-### MongoDB Connection Fails
-```bash
-# Check connection string format:
-# mongodb+srv://username:password@cluster.mongodb.net/vocalysis
+**VocoCore service returns 502:**
+- Check Railway deploy logs for the merry-tranquility service
+- Health check timeout is 180s — give it 3 minutes after first deploy
+- Verify `VOCOCORE_INTERNAL_KEY` matches between API/worker and VocoCore service
 
-# Verify IP whitelist includes your machine
-# https://cloud.mongodb.com → Network Access
-```
+**Worker audio analysis always uses fallback:**
+- Check `VOCOCORE_SERVICE_URL` env var is set on the worker service
+- Verify VocoCore `/health` returns `{"ml_model_loaded": true}`
 
-### VocaCore Service Crashes
-```bash
-# Check Python dependencies installed
-pip list | grep -E "flask|torch|librosa"
+**Alert escalation cron failures:**
+- Check for `ObjectId cast error` — indicates legacy alerts with non-ObjectId tenantId
+- Fixed in commit `f265a70` — redeploy worker if still occurring
 
-# Check VOCOCORE_INTERNAL_KEY matches API
-echo $VOCOCORE_INTERNAL_KEY
-```
-
-### API Won't Start
-```bash
-# Check Node version
-node --version  # Should be 20+
-
-# Clear cache and reinstall
-rm -rf node_modules package-lock.json
-npm ci
-
-# Check .env file exists and is readable
-cat api/.env | head
-```
-
-### Frontend Build Fails
-```bash
-# Ensure VITE_API_URL is set correctly
-cat web/.env
-
-# Clear Vite cache
-rm -rf web/dist web/.vite
-
-# Rebuild
-npm run build
-```
+**sklearn version warning on VocoCore startup:**
+- `requirements.txt` pins `scikit-learn>=1.3.0,<1.4.0` — ensure no override
+- If model was retrained, re-pin to the sklearn version used for training
 
 ---
 
-## Monitoring & Alerts
+## Monitoring
 
-### Health Dashboard
-- **URL:** https://status.vocalysis.cittaa.in
-- **Updates Every:** 1 minute
-- **Checks:**
-  - MongoDB connectivity
-  - Redis connectivity
-  - API responsiveness
-  - VocaCore service availability
-  - Email delivery system
-
-### Alerts
-Sent to `ALERT_EMAIL_TO` when:
-- Any service becomes unavailable (5+ min)
-- Database connection failures
-- High API latency (>2 sec)
-- Worker job failures
-- Low disk space (>90% used)
-
-### Bull Queue Dashboard
-```
-https://api.vocalysis.cittaa.in/admin/queues
-Password: [BULL_BOARD_PASSWORD from env]
-```
-
-View real-time job queues, retries, and failures.
+- **Health Dashboard:** https://status.vocalysis.cittaa.in
+- **Bull Queue Board:** https://api.mindbridge.cittaa.in/admin/queues
+- **Railway Logs:** Dashboard → each service → Deployments tab
 
 ---
 
-## Phase 2 (Coming Soon)
+## Contact
 
-For detailed Phase 2 specifications, see [PHASE_2_SPEC.md](./PHASE_2_SPEC.md).
-
-Planned features:
-- **React Native Mobile App** — iOS + Android self-service assessments
-- **WhatsApp Bot** — Voice note assessment via WhatsApp
-- **Manager Dashboard** — Aggregate team wellness insights (privacy-first)
+- **Founder:** Sairam — cittaagroups@gmail.com
+- **Platform:** https://cittaa.in
+- **Status:** https://status.vocalysis.cittaa.in
 
 ---
 
-## Contact & Support
+## License
 
-- **API Support:** api@cittaa.in
-- **Technical Lead:** sairam@cittaa.in
-- **Product:** rohan@cittaa.in
-- **Status Page:** https://status.vocalysis.cittaa.in
+© 2024–2026 Cittaa Health Services Private Limited, Hyderabad, India.
+All code, models, and infrastructure are proprietary and confidential.
 
----
+VocoCore™, VocoScale™, and Vocalysis™ are trademarks of Cittaa Health Services.
 
-## License & Ownership
-
-© 2024-2026 Cittaa Health Services Private Limited, Hyderabad, India.
-
-All code, documentation, and infrastructure configurations are proprietary.
-
----
-
-**Last Updated:** March 2026
-**Version:** 2.0.0
+**Last Updated:** April 2026 | **Version:** 2.1.0
