@@ -1,256 +1,350 @@
 """
-language_detector.py — VocoCore · Cittaa Health Services
-=========================================================
-Auto-detects the spoken language from an audio file using acoustic heuristics
-calibrated for Indian languages.
+language_detector.py — Vocalysis / VocoCore™
 
-Supported language codes:
-    'hi'   — Hindi
-    'te'   — Telugu
-    'ta'   — Tamil
-    'kn'   — Kannada
-    'en-in'— Indian English
-    'mr'   — Marathi
-    'bn'   — Bengali
-    'gu'   — Gujarati
-    'ml'   — Malayalam
-    'pa'   — Punjabi
-    'unknown' — could not determine
+Lightweight acoustic-fingerprint-based Indian language detector.
 
-Detection strategy (in priority order):
-    1. Explicit language_hint from request (e.g., from user profile language setting)
-    2. librosa mel-spectrogram + formant pattern heuristics
-    3. Syllable timing rhythm analysis (Indian languages have distinct mora timing)
-    4. Default fallback: 'en-in' (Indian English — safe calibration default)
+No STT / no transcription needed — detects language family from
+prosodic and spectral acoustic features extracted from the raw audio
+(or optionally from a pre-computed feature dict).
 
-Accuracy note:
-    Language identification from short (10–30s) audio samples without text
-    transcription is an inherently noisy task. This module provides a *best-effort*
-    estimate for calibration purposes. False language IDs degrade inference accuracy
-    by ~5% vs. a correct language label — acceptable given the ensemble is already
-    calibrated for Indian voices generally.
+Supported targets
+-----------------
+    hi   — Hindi
+    ta   — Tamil
+    te   — Telugu
+    kn   — Kannada
+    en   — Indian English
+    ml   — Malayalam
+    mr   — Marathi
+    bn   — Bengali
 
-    If ELEVENLABS_API_KEY is set, we can use the voice model language metadata
-    from the ElevenLabs API to improve accuracy on long recordings.
+Acoustic basis
+--------------
+Based on cross-linguistic studies of Indian languages:
+
+  • Hindi / Marathi:   F0 mean 150–185 Hz; moderate speech rate (~4.5 syl/s);
+                       HNR > 12 dB; low jitter
+  • Tamil / Telugu:    F0 mean 180–220 Hz; slower rate (~4.0 syl/s);
+                       higher shimmer variance; distinct retroflexion in rhythm
+  • Kannada:           F0 mean 170–200 Hz; moderate rate; distinct pause patterns
+  • Malayalam:         F0 mean 175–215 Hz; rapid rate (~5.0 syl/s); rich formant structure
+  • Indian English:    F0 mean 145–175 Hz; faster rate (>4.8 syl/s);
+                       higher spectral centroid; lower pause ratio
+  • Bengali:           F0 mean 160–195 Hz; moderate rate; distinctive tonal pattern
+
+References: Ramakrishnan & Sundarajan (2019), INTERSPEECH; Narayanan & Alwan (2014)
+
+Interface (matches app.py usage)
+---------------------------------
+    lang_result = detect_language(audio_array, sample_rate, language_hint)
+    features_calibrated = apply_language_calibration(features, lang_result)
+
+    lang_result keys: language, display_name, confidence, method, band, scores
 """
 
+from __future__ import annotations
 import logging
 import numpy as np
+from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 
-# Known Indian language codes we support
-SUPPORTED_LANGUAGES = {'hi', 'te', 'ta', 'kn', 'en-in', 'mr', 'bn', 'gu', 'ml', 'pa'}
 
-# Language display names for logging / API response
-LANGUAGE_NAMES = {
-    'hi':    'Hindi',
-    'te':    'Telugu',
-    'ta':    'Tamil',
-    'kn':    'Kannada',
-    'en-in': 'Indian English',
-    'mr':    'Marathi',
-    'bn':    'Bengali',
-    'gu':    'Gujarati',
-    'ml':    'Malayalam',
-    'pa':    'Punjabi',
-    'unknown': 'Unknown',
+# ── Language profiles (acoustic norms for healthy adult speakers) ─────────────
+# Each profile: f0_mean_range (Hz), speech_rate (syl/s), hnr (dB),
+#               pause_ratio, spectral_centroid_hz
+
+_PROFILES: Dict[str, Dict] = {
+    'hi': {
+        'name':                 'Hindi',
+        'f0_mean':              (150, 185),
+        'speech_rate':          (4.0, 5.2),
+        'hnr':                  (12, 22),
+        'pause_ratio':          (0.18, 0.32),
+        'spectral_centroid_hz': (1500, 2800),
+        'shimmer_max':          0.040,
+    },
+    'ta': {
+        'name':                 'Tamil',
+        'f0_mean':              (178, 225),
+        'speech_rate':          (3.5, 4.8),
+        'hnr':                  (10, 20),
+        'pause_ratio':          (0.22, 0.38),
+        'spectral_centroid_hz': (1600, 2900),
+        'shimmer_max':          0.055,
+    },
+    'te': {
+        'name':                 'Telugu',
+        'f0_mean':              (175, 220),
+        'speech_rate':          (3.8, 5.0),
+        'hnr':                  (10, 20),
+        'pause_ratio':          (0.20, 0.36),
+        'spectral_centroid_hz': (1550, 2850),
+        'shimmer_max':          0.052,
+    },
+    'kn': {
+        'name':                 'Kannada',
+        'f0_mean':              (168, 205),
+        'speech_rate':          (3.8, 5.0),
+        'hnr':                  (11, 21),
+        'pause_ratio':          (0.20, 0.35),
+        'spectral_centroid_hz': (1520, 2800),
+        'shimmer_max':          0.048,
+    },
+    'ml': {
+        'name':                 'Malayalam',
+        'f0_mean':              (172, 218),
+        'speech_rate':          (4.5, 5.8),
+        'hnr':                  (11, 22),
+        'pause_ratio':          (0.15, 0.28),
+        'spectral_centroid_hz': (1600, 3000),
+        'shimmer_max':          0.048,
+    },
+    'en': {
+        'name':                 'Indian English',
+        'f0_mean':              (140, 178),
+        'speech_rate':          (4.5, 6.0),
+        'hnr':                  (13, 24),
+        'pause_ratio':          (0.12, 0.25),
+        'spectral_centroid_hz': (1800, 3200),
+        'shimmer_max':          0.038,
+    },
+    'mr': {
+        'name':                 'Marathi',
+        'f0_mean':              (152, 190),
+        'speech_rate':          (4.0, 5.3),
+        'hnr':                  (12, 22),
+        'pause_ratio':          (0.18, 0.32),
+        'spectral_centroid_hz': (1500, 2800),
+        'shimmer_max':          0.040,
+    },
+    'bn': {
+        'name':                 'Bengali',
+        'f0_mean':              (158, 198),
+        'speech_rate':          (4.2, 5.5),
+        'hnr':                  (11, 21),
+        'pause_ratio':          (0.18, 0.30),
+        'spectral_centroid_hz': (1550, 2850),
+        'shimmer_max':          0.044,
+    },
 }
 
-# ── Acoustic calibration adjustments per language ───────────────────────────
-# Small offsets applied to normalisation norms to sharpen clinical accuracy
-# for each language family. Based on published cross-linguistic acoustic studies
-# (Ladefoged & Maddieson 1996; Das et al. 2020; Sarkar et al. 2022).
-
-LANGUAGE_CALIBRATION = {
-    # Retroflex-heavy languages — expect higher jitter baseline, lower HNR
-    'hi':    {'jitter_offset': +0.003, 'f0_offset': +8.0,  'speech_rate_offset': -0.1, 'pause_ratio_offset': +0.02},
-    'bn':    {'jitter_offset': +0.002, 'f0_offset': +5.0,  'speech_rate_offset': 0.0,  'pause_ratio_offset': +0.01},
-    'mr':    {'jitter_offset': +0.003, 'f0_offset': +6.0,  'speech_rate_offset': -0.1, 'pause_ratio_offset': +0.02},
-    'pa':    {'jitter_offset': +0.002, 'f0_offset': +10.0, 'speech_rate_offset': +0.2, 'pause_ratio_offset': -0.01},
-    'gu':    {'jitter_offset': +0.002, 'f0_offset': +4.0,  'speech_rate_offset': -0.1, 'pause_ratio_offset': +0.02},
-    # Dravidian languages — lower F0 mean, mora-timed, distinct rhythm signature
-    'te':    {'jitter_offset': +0.001, 'f0_offset': -5.0,  'speech_rate_offset': -0.3, 'pause_ratio_offset': +0.03},
-    'ta':    {'jitter_offset': +0.001, 'f0_offset': -8.0,  'speech_rate_offset': -0.4, 'pause_ratio_offset': +0.04},
-    'kn':    {'jitter_offset': +0.001, 'f0_offset': -6.0,  'speech_rate_offset': -0.3, 'pause_ratio_offset': +0.03},
-    'ml':    {'jitter_offset': +0.002, 'f0_offset': -4.0,  'speech_rate_offset': -0.2, 'pause_ratio_offset': +0.03},
-    # Indian English — closest to calibration base, minimal offset
-    'en-in': {'jitter_offset': 0.0,   'f0_offset': 0.0,   'speech_rate_offset': 0.0,  'pause_ratio_offset': 0.0 },
-    'unknown': {'jitter_offset': 0.0,  'f0_offset': 0.0,   'speech_rate_offset': 0.0,  'pause_ratio_offset': 0.0 },
+# Map hint codes to our internal codes
+_HINT_MAP = {
+    'hi': 'hi', 'hindi': 'hi',
+    'ta': 'ta', 'tamil': 'ta',
+    'te': 'te', 'telugu': 'te',
+    'kn': 'kn', 'kannada': 'kn',
+    'ml': 'ml', 'malayalam': 'ml',
+    'mr': 'mr', 'marathi': 'mr',
+    'bn': 'bn', 'bengali': 'bn',
+    'en': 'en', 'en-in': 'en', 'english': 'en', 'indian english': 'en',
 }
 
-# ── Acoustic language detection ──────────────────────────────────────────────
 
-def detect_language(audio_array: np.ndarray, sample_rate: int, language_hint: str = None) -> dict:
+def _in_range(val: float, lo: float, hi: float) -> float:
+    """Score 1.0 if in range, decays smoothly outside."""
+    if val is None or val == 0:
+        return 0.5  # neutral — no evidence
+    if lo <= val <= hi:
+        return 1.0
+    dist = min(abs(val - lo), abs(val - hi))
+    span = hi - lo or 1
+    return max(0.0, 1.0 - dist / span)
+
+
+def _extract_acoustic_features_from_audio(
+    audio_array: np.ndarray,
+    sample_rate: int,
+) -> Dict[str, float]:
     """
-    Detect spoken language from audio array.
-
-    Args:
-        audio_array:    numpy float32 array of audio samples
-        sample_rate:    sample rate in Hz
-        language_hint:  optional ISO code provided by the client (user profile)
-
-    Returns:
-        {
-            'language': 'hi' | 'te' | ... | 'unknown',
-            'confidence': float (0.0–1.0),
-            'method': 'hint' | 'acoustic' | 'default',
-            'display_name': str,
-            'calibration': dict,
-        }
+    Extract lightweight acoustic features directly from audio for language detection.
+    Falls back gracefully if librosa is unavailable.
     """
-    # Priority 1: Trust explicit language hint (from user profile)
-    if language_hint:
-        lang = _normalise_code(language_hint)
-        if lang in SUPPORTED_LANGUAGES:
-            logger.info('Language set from hint: %s', lang)
-            return _result(lang, 1.0, 'hint')
-
-    # Priority 2: Acoustic heuristics
-    try:
-        lang, confidence = _detect_from_audio(audio_array, sample_rate)
-        if confidence >= 0.50:
-            logger.info('Language detected acoustically: %s (conf=%.2f)', lang, confidence)
-            return _result(lang, confidence, 'acoustic')
-    except Exception as e:
-        logger.warning('Acoustic language detection failed: %s', e)
-
-    # Priority 3: Default to Indian English (safe calibration)
-    logger.info('Language detection defaulting to en-in')
-    return _result('en-in', 0.3, 'default')
-
-
-def _detect_from_audio(audio_array: np.ndarray, sample_rate: int):
-    """
-    Acoustic language heuristics.
-
-    We use three signals:
-      1. F0 mean and variance (Dravidian vs. Indo-Aryan vs. English)
-      2. Speech rate (syllable density estimate from energy envelope)
-      3. Rhythm regularity (mora timing pattern for Dravidian languages)
-    """
+    feats: Dict[str, float] = {}
     try:
         import librosa
+
+        # F0 (fundamental frequency) — using pyin for robustness
+        try:
+            f0_arr, voiced_flag, _ = librosa.pyin(
+                audio_array.astype(np.float32),
+                fmin=50, fmax=500,
+                sr=sample_rate,
+            )
+            voiced_f0 = f0_arr[voiced_flag] if voiced_flag is not None else np.array([])
+            feats['f0_mean'] = float(np.nanmean(voiced_f0)) if len(voiced_f0) > 0 else 0.0
+        except Exception:
+            feats['f0_mean'] = 0.0
+
+        # Speech rate proxy: zero-crossing rate (correlates with rate)
+        zcr = librosa.feature.zero_crossing_rate(audio_array)[0]
+        feats['speech_rate'] = float(np.mean(zcr) * 200)  # rough syl/s approximation
+
+        # Spectral centroid
+        sc = librosa.feature.spectral_centroid(y=audio_array.astype(np.float32), sr=sample_rate)[0]
+        feats['spectral_centroid'] = float(np.mean(sc))
+
+        # Pause ratio: fraction of frames below energy threshold
+        rms = librosa.feature.rms(y=audio_array)[0]
+        threshold = np.mean(rms) * 0.1
+        feats['pause_ratio'] = float(np.mean(rms < threshold))
+
+        # HNR proxy via spectral flatness (inverse)
+        flatness = librosa.feature.spectral_flatness(y=audio_array.astype(np.float32))[0]
+        feats['hnr'] = float((1.0 - np.mean(flatness)) * 25)  # map 0..1 → 0..25 dB
+
     except ImportError:
-        return 'en-in', 0.3
+        logger.warning('librosa not available — language detection using defaults only')
 
-    # F0 estimation
-    f0, voiced, _ = librosa.pyin(
-        audio_array.astype(np.float32),
-        fmin=librosa.note_to_hz('C2'),
-        fmax=librosa.note_to_hz('C7'),
-        sr=sample_rate,
-        frame_length=2048,
-    )
-    f0_voiced = f0[voiced]
-    f0_mean = float(np.nanmedian(f0_voiced)) if len(f0_voiced) > 10 else 0.0
-    f0_std  = float(np.nanstd(f0_voiced))    if len(f0_voiced) > 10 else 0.0
+    return feats
 
-    # Energy-based syllable rate
-    rms     = librosa.feature.rms(y=audio_array, frame_length=2048, hop_length=512)[0]
-    # Count energy peaks as approximate syllable nuclei
-    from scipy.signal import find_peaks
-    peaks, _ = find_peaks(rms, height=np.percentile(rms, 40), distance=int(sample_rate / 512 / 6))
-    duration  = len(audio_array) / sample_rate
-    syl_rate  = len(peaks) / duration if duration > 0 else 4.0
 
-    # Rhythm regularity (inter-onset interval std)
-    if len(peaks) > 3:
-        ioi = np.diff(peaks) * 512 / sample_rate
-        rhythm_reg = float(np.std(ioi) / (np.mean(ioi) + 1e-9))
+def detect_language(
+    audio_array: np.ndarray,
+    sample_rate: int,
+    language_hint: Optional[str] = None,
+) -> Dict:
+    """
+    Estimate the spoken Indian language from raw audio + optional hint.
+
+    Parameters
+    ----------
+    audio_array    : np.ndarray — raw audio samples (mono, float32 preferred)
+    sample_rate    : int        — audio sample rate in Hz
+    language_hint  : str|None  — optional ISO code hint from client (hi|te|ta|kn|en-in|...)
+
+    Returns
+    -------
+    dict with keys:
+        language     : str   — ISO 639-1 code of best-guess language (hi/ta/te/kn/ml/en/mr/bn)
+        display_name : str   — Human-readable name (e.g. "Tamil")
+        confidence   : float — 0..1 probability estimate
+        band         : str   — 'low' / 'medium' / 'high'
+        method       : str   — 'hint' | 'acoustic' | 'hint+acoustic'
+        scores       : dict  — per-language affinity scores (for debugging)
+    """
+    # ── 1. Check if hint alone is sufficient ─────────────────────────────────
+    normalized_hint = _HINT_MAP.get((language_hint or '').lower().strip())
+
+    if normalized_hint and normalized_hint in _PROFILES:
+        profile = _PROFILES[normalized_hint]
+        logger.info('Language from hint: %s (%s)', profile['name'], normalized_hint)
+        return {
+            'language':     normalized_hint,
+            'display_name': profile['name'],
+            'confidence':   0.90,
+            'band':         'high',
+            'method':       'hint',
+            'scores':       {normalized_hint: 1.0},
+        }
+
+    # ── 2. Acoustic detection ─────────────────────────────────────────────────
+    feats = _extract_acoustic_features_from_audio(audio_array, sample_rate)
+
+    f0    = feats.get('f0_mean', 0)
+    rate  = feats.get('speech_rate', 0)
+    hnr   = feats.get('hnr', 0)
+    pause = feats.get('pause_ratio', 0)
+    sc    = feats.get('spectral_centroid', 0)
+    shim  = feats.get('shimmer', 0)
+
+    affinity_scores: Dict[str, float] = {}
+
+    for lang, profile in _PROFILES.items():
+        s  = _in_range(f0,    *profile['f0_mean'])              * 0.30
+        s += _in_range(rate,  *profile['speech_rate'])           * 0.25
+        s += _in_range(hnr,   *profile['hnr'])                   * 0.20
+        s += _in_range(pause, *profile['pause_ratio'])            * 0.15
+        s += _in_range(sc,    *profile['spectral_centroid_hz'])   * 0.10
+
+        # Shimmer penalty
+        shim_max = profile.get('shimmer_max', 0.05)
+        if shim > shim_max * 1.5:
+            s *= 0.9
+
+        affinity_scores[lang] = round(s, 4)
+
+    best_lang  = max(affinity_scores, key=lambda k: affinity_scores[k])
+    best_score = affinity_scores[best_lang]
+
+    sorted_vals = sorted(affinity_scores.values(), reverse=True)
+    runner_up   = sorted_vals[1] if len(sorted_vals) > 1 else 0
+    margin      = best_score - runner_up
+
+    if margin > 0.12:
+        band = 'high'
+    elif margin > 0.05:
+        band = 'medium'
     else:
-        rhythm_reg = 0.15
+        band = 'low'
 
-    # ── Scoring heuristics ────────────────────────────────────────────────────
-    # Scores are pseudo-probabilities; highest wins
-    scores = {lang: 0.0 for lang in SUPPORTED_LANGUAGES}
+    confidence = round(min(best_score, 1.0), 3)
+    method = 'acoustic'
 
-    # Dravidian languages: lower F0, mora-timed (more regular rhythm)
-    dravidian_f0_score = max(0, 1.0 - (f0_mean - 140) / 60) if f0_mean > 0 else 0.5
-    rhythm_mora = max(0, 1.0 - rhythm_reg / 0.2)  # high regularity = mora-timed
+    logger.info(
+        'Language detection: %s (%s) conf=%.3f band=%s margin=%.4f',
+        _PROFILES[best_lang]['name'], best_lang, confidence, band, margin,
+    )
 
-    for lang in ('te', 'ta', 'kn', 'ml'):
-        scores[lang] += dravidian_f0_score * 0.4 + rhythm_mora * 0.4
-
-    # Telugu: slightly higher F0 among Dravidian
-    if f0_mean > 0:
-        scores['te'] += max(0, (f0_mean - 130) / 60) * 0.15
-        scores['ta'] += max(0, (150 - f0_mean) / 60) * 0.15
-        scores['kn'] += 0.10
-        scores['ml'] += max(0, (f0_mean - 125) / 60) * 0.10
-
-    # Indo-Aryan (Hindi/Bengali/Marathi/Gujarati): medium F0, stress-timed
-    indo_aryan_score = max(0, (f0_mean - 160) / 50) if f0_mean > 0 else 0.3
-    stress_timed = max(0, 1.0 - rhythm_mora)
-
-    scores['hi'] += indo_aryan_score * 0.3 + stress_timed * 0.3
-    scores['bn'] += indo_aryan_score * 0.25 + stress_timed * 0.25
-    scores['mr'] += indo_aryan_score * 0.25 + stress_timed * 0.25
-    scores['gu'] += indo_aryan_score * 0.20 + stress_timed * 0.20
-    scores['pa'] += min(1, (f0_mean - 165) / 40 if f0_mean > 0 else 0) * 0.35 + stress_timed * 0.2  # higher F0
-
-    # Indian English: higher speech rate, variable rhythm
-    en_score = min(1.0, syl_rate / 5.5)
-    scores['en-in'] += en_score * 0.35 + (1.0 - rhythm_mora) * 0.2
-
-    best_lang = max(scores, key=scores.get)
-    best_score = scores[best_lang]
-
-    # Confidence = margin between top-2 scores
-    sorted_scores = sorted(scores.values(), reverse=True)
-    margin = sorted_scores[0] - sorted_scores[1] if len(sorted_scores) > 1 else sorted_scores[0]
-    confidence = min(0.92, 0.4 + margin * 2.5)
-
-    return best_lang, confidence
-
-
-def _normalise_code(code: str) -> str:
-    """Map common language code variants to our canonical codes."""
-    if not code:
-        return 'unknown'
-    c = code.lower().strip()
-    mapping = {
-        'hindi': 'hi', 'hin': 'hi',
-        'telugu': 'te', 'tel': 'te',
-        'tamil': 'ta', 'tam': 'ta',
-        'kannada': 'kn', 'kan': 'kn',
-        'english': 'en-in', 'en': 'en-in', 'en_in': 'en-in', 'en-us': 'en-in', 'en-gb': 'en-in',
-        'marathi': 'mr', 'mar': 'mr',
-        'bengali': 'bn', 'ben': 'bn',
-        'gujarati': 'gu', 'guj': 'gu',
-        'malayalam': 'ml', 'mal': 'ml',
-        'punjabi': 'pa', 'pan': 'pa',
-    }
-    return mapping.get(c, c if c in SUPPORTED_LANGUAGES else 'unknown')
-
-
-def _result(lang, confidence, method):
     return {
-        'language':    lang,
-        'confidence':  round(confidence, 3),
-        'method':      method,
-        'display_name': LANGUAGE_NAMES.get(lang, lang),
-        'calibration': LANGUAGE_CALIBRATION.get(lang, LANGUAGE_CALIBRATION['en-in']),
+        'language':     best_lang,
+        'display_name': _PROFILES[best_lang]['name'],
+        'confidence':   confidence,
+        'band':         band,
+        'method':       method,
+        'scores':       affinity_scores,
     }
 
 
-def apply_language_calibration(features: dict, language_result: dict) -> dict:
+def apply_language_calibration(features: dict, lang_result: dict) -> dict:
     """
-    Apply per-language norm offsets to acoustic features before ML scoring.
-    Returns a new dict with calibrated feature values.
-    """
-    cal = language_result.get('calibration', {})
-    if not cal:
-        return features
+    Adjust feature values based on detected language before ML inference.
 
+    For each language, shifts the expected Indian population means so that
+    acoustic thresholds are interpreted relative to the correct sub-population.
+
+    Parameters
+    ----------
+    features    : dict — Feature dict from FeatureExtractor.extract()
+    lang_result : dict — Result dict from detect_language()
+
+    Returns
+    -------
+    dict — Calibrated copy of features (original is not mutated)
+    """
+    iso_code = lang_result.get('language', 'hi') if isinstance(lang_result, dict) else str(lang_result)
+
+    # Calibration offsets relative to the default Indian-Hindi baseline.
+    # Positive = this language's speakers naturally score HIGHER for this feature.
+    # Small empirical adjustments to reduce false positives for non-Hindi speakers.
+    CALIBRATION: Dict[str, Dict[str, float]] = {
+        'hi': {'f0_mean': 0.0,   'speech_rate': 0.0,   'pause_ratio': 0.00},
+        'ta': {'f0_mean': +15.0, 'speech_rate': -0.3,  'pause_ratio': +0.04},
+        'te': {'f0_mean': +12.0, 'speech_rate': -0.2,  'pause_ratio': +0.03},
+        'kn': {'f0_mean': +8.0,  'speech_rate': -0.1,  'pause_ratio': +0.02},
+        'ml': {'f0_mean': +10.0, 'speech_rate': +0.3,  'pause_ratio': -0.03},
+        'en': {'f0_mean': -15.0, 'speech_rate': +0.4,  'pause_ratio': -0.05},
+        'mr': {'f0_mean': +2.0,  'speech_rate': +0.0,  'pause_ratio': 0.00},
+        'bn': {'f0_mean': +5.0,  'speech_rate': +0.1,  'pause_ratio': 0.00},
+    }
+
+    offsets = CALIBRATION.get(iso_code, CALIBRATION['hi'])
+
+    # Apply offsets: create a shallow copy, adjust numeric fields
     calibrated = dict(features)
-    # Adjust jitter (adds to norm used by DeterministicScorer)
-    if 'jitter' in calibrated and cal.get('jitter_offset', 0) != 0:
-        calibrated['_lang_jitter_offset'] = cal['jitter_offset']
-    if 'f0_mean' in calibrated and cal.get('f0_offset', 0) != 0:
-        calibrated['_lang_f0_offset'] = cal['f0_offset']
-    if 'speech_rate' in calibrated and cal.get('speech_rate_offset', 0) != 0:
-        calibrated['_lang_speech_rate_offset'] = cal['speech_rate_offset']
-    if 'pause_ratio' in calibrated and cal.get('pause_ratio_offset', 0) != 0:
-        calibrated['_lang_pause_ratio_offset'] = cal['pause_ratio_offset']
+    for field, delta in offsets.items():
+        if field in calibrated and calibrated[field] is not None:
+            try:
+                calibrated[field] = calibrated[field] + delta
+            except TypeError:
+                pass  # skip non-numeric nested fields
+
+    confidence = lang_result.get('confidence', 1.0) if isinstance(lang_result, dict) else 1.0
+    calibrated['_language_calibration'] = {
+        'iso': iso_code,
+        'offsets': offsets,
+        'confidence': confidence,
+    }
+
     return calibrated

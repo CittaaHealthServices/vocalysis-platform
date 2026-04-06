@@ -1051,6 +1051,11 @@ module.exports = async function audioAnalysisProcessor(job) {
           analysisResults: { overallRiskLevel: riskLevel, confidence: confScore, timestamp: now },
           'audioMetadata.processingCompletedAt': now,
           'audioMetadata.processingStatus':      'completed',
+          // Store detected language (set by VocoCore scoring step)
+          ...(job.data._detectedLanguage && {
+            'language.iso639_1': job.data._detectedLanguage.code,
+            'language.name':     job.data._detectedLanguage.display_name,
+          }),
         }
       },
       { new: true }
