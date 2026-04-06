@@ -353,34 +353,11 @@ const sessionSchema = new mongoose.Schema(
 );
 
 // ── Trend data — written by worker after computeTrend() ───────────────────────
-// Stored directly on the session for fast retrieval without re-aggregation
-const trendDataBlock = {
-  overall:            String,  // 'stable' | 'deteriorating' | 'rapid_deterioration' | 'improving' | 'insufficient_data'
-  velocity:           String,  // 'accelerating_decline' | 'steady' | 'accelerating_improvement' | 'unknown'
-  deltas: {
-    depression: Number,
-    anxiety:    Number,
-    stress:     Number,
-    wellness:   Number,
-  },
-  baselineAvg: {
-    depression: Number,
-    anxiety:    Number,
-    stress:     Number,
-    wellness:   Number,
-  },
-  preAlert:            Boolean,
-  preAlertDimensions: [String],
-  preAlertSeverity:   String,  // 'warning' | 'urgent'
-  sessionCount:       Number,
-  computedAt:         Date,
-};
-// Attach trendData as a plain Object field for lightweight longitudinal storage
+// ── Trend data — written by worker after computeTrend() ─────────────────────────
+// Stored as Mixed so the worker can write any shape without schema conflicts
+// Shape: { overall, velocity, deltas, baselineAvg, preAlert, preAlertDimensions, preAlertSeverity, sessionCount, computedAt }
 sessionSchema.add({
-  trendData: {
-    type: Object,
-    default: null,
-  },
+  trendData: { type: mongoose.Schema.Types.Mixed, default: null },
 });
 
 sessionSchema.index({ tenantId: 1, sessionDate: -1 });
