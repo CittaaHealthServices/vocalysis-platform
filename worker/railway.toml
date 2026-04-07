@@ -4,3 +4,4 @@
 [deploy]
   startCommand = "node src/worker.js"
   restartPolicyType = "ALWAYS"
+  restartPolicyMaxRetries = 5
