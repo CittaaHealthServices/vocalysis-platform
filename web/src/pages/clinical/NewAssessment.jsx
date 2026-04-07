@@ -28,7 +28,7 @@ export const NewAssessment = () => {
 
   const { isPolling, data: processingData, progress, completed, startPolling } = usePolling(
     () => api.get(`/sessions/${sessionId}`),
-    (result) => result?.status === 'completed' || result?.status === 'failed',
+    (result) => result?.session?.status === 'completed' || result?.session?.status === 'failed',
     3000
   )
 
