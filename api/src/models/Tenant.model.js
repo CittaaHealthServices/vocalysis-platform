@@ -6,10 +6,9 @@ const tenantSchema = new mongoose.Schema(
     tenantId: {
       type: String,
       required: true,
-      unique: true,
+      unique: true,   // unique already creates an index; no need for index: true
       lowercase: true,
       trim: true,
-      index: true,
       match: /^[a-z0-9-]+$/,
     },
     displayName: {
@@ -123,7 +122,7 @@ const tenantSchema = new mongoose.Schema(
       type: String,
       enum: ['active', 'suspended', 'trial', 'expired', 'onboarding'],
       default: 'onboarding',
-      index: true,
+      // index defined explicitly via tenantSchema.index() below; no field-level duplicate needed
     },
 
     /* ── 14-Day Trial ────────────────────────────────────────────────── */
@@ -197,7 +196,8 @@ const tenantSchema = new mongoose.Schema(
   }
 );
 
-tenantSchema.index({ tenantId: 1 }, { unique: true });
+// tenantId unique index is already created by unique:true in the field definition above.
+// status and contractTier explicit indexes (no field-level duplication).
 tenantSchema.index({ status: 1 });
 tenantSchema.index({ contractTier: 1 });
 

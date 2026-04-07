@@ -5,8 +5,7 @@ const apiKeySchema = new mongoose.Schema(
   {
     keyId: {
       type: String,
-      unique: true,
-      index: true,
+      unique: true,   // unique creates the index; index: true removed (duplicate)
       required: true,
     },
     tenantId: {
@@ -16,8 +15,7 @@ const apiKeySchema = new mongoose.Schema(
     },
     keyHash: {
       type: String,
-      unique: true,
-      index: true,
+      unique: true,   // unique creates the index; index: true removed (duplicate)
       required: true,
       select: false,
     },
@@ -106,7 +104,8 @@ const apiKeySchema = new mongoose.Schema(
   }
 );
 
-apiKeySchema.index({ keyHash: 1 }, { unique: true });
+// keyHash unique index is already created by unique:true in the field definition above.
+// compound index on tenantId + isActive for active-key lookups per tenant.
 apiKeySchema.index({ tenantId: 1, isActive: 1 });
 
 apiKeySchema.statics.hashKey = function (rawKey) {

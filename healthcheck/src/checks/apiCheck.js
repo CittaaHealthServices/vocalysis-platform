@@ -2,7 +2,11 @@ const axios = require('axios');
 const logger = require('../logger');
 
 module.exports = async function apiCheck() {
-  const apiUrl = process.env.API_URL || 'https://api.vocalysis.cittaa.in/v1/health';
+  // API_URL may be set to either a base URL (https://api.mindbridge.cittaa.in)
+  // or a full health endpoint. Normalise: strip trailing slash, then append
+  // /health only when the path doesn't already end with /health.
+  const rawUrl = (process.env.API_URL || 'https://api.mindbridge.cittaa.in').replace(/\/$/, '');
+  const apiUrl = /\/health$/.test(rawUrl) ? rawUrl : `${rawUrl}/health`;
   const timeout = 5000;
 
   try {

@@ -98,7 +98,10 @@ app.use(morgan(':remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:htt
 // HEALTH CHECK ENDPOINTS
 // ============================================================================
 
-app.get('/health', (req, res) => {
+// Primary health endpoint — used by Railway and monitoring services.
+// /api/health and /v1/health are aliases kept for backwards compatibility
+// with older deployments and documentation that pointed to different paths.
+app.get(['/health', '/api/health', '/v1/health'], (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 

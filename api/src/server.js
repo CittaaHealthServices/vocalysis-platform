@@ -6,7 +6,9 @@ const mongoose = require('mongoose');
 const redis = require('./utils/redis');
 
 const PORT = process.env.PORT || 8080;
-const NODE_ENV = process.env.NODE_ENV || 'development';
+// Default to 'production' so a misconfigured Railway deployment is never
+// accidentally treated as development (which relaxes error messages, CORS, etc.)
+const NODE_ENV = process.env.NODE_ENV || 'production';
 
 let server;
 let isShuttingDown = false;
@@ -16,10 +18,9 @@ let isShuttingDown = false;
  */
 async function connectMongoDB() {
   try {
-    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/vocalysis', {
-      useNewUrlParser: true,
-      useUnifiedTopology: true
-    });
+    // useNewUrlParser and useUnifiedTopology are deprecated in Mongoose 6+
+    // and have no effect — the new driver uses them by default.
+    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/vocalysis');
     logger.info('Connected to MongoDB');
   } catch (err) {
     logger.error('Failed to connect to MongoDB', { error: err.message });
