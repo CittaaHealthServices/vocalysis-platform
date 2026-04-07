@@ -12,6 +12,11 @@ on:
         type: choice
         options: [all, api, worker, web, healthcheck, vococore, kintsugi-service]
 
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  # From: railway.com/project/5c3d3fd1-78a0-4fef-ba57-d590b556500b
+  RAILWAY_PROJECT_ID: 5c3d3fd1-78a0-4fef-ba57-d590b556500b
+
 jobs:
 
   deploy-api:
@@ -28,11 +33,12 @@ jobs:
           node-version: '18'
       - name: Install Railway CLI
         run: npm install -g @railway/cli
-      - name: Deploy
+      - name: Deploy API
         working-directory: api
         run: railway up --service api --detach
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: 5c3d3fd1-78a0-4fef-ba57-d590b556500b
 
   deploy-worker:
     name: Deploy → Worker
@@ -48,11 +54,12 @@ jobs:
           node-version: '18'
       - name: Install Railway CLI
         run: npm install -g @railway/cli
-      - name: Deploy
+      - name: Deploy Worker
         working-directory: worker
         run: railway up --service worker --detach
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: 5c3d3fd1-78a0-4fef-ba57-d590b556500b
 
   deploy-web:
     name: Deploy → Web
@@ -68,11 +75,12 @@ jobs:
           node-version: '18'
       - name: Install Railway CLI
         run: npm install -g @railway/cli
-      - name: Deploy
+      - name: Deploy Web
         working-directory: web
         run: railway up --service web --detach
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: 5c3d3fd1-78a0-4fef-ba57-d590b556500b
 
   deploy-healthcheck:
     name: Deploy → Healthcheck
@@ -88,11 +96,12 @@ jobs:
           node-version: '18'
       - name: Install Railway CLI
         run: npm install -g @railway/cli
-      - name: Deploy
+      - name: Deploy Healthcheck
         working-directory: healthcheck
         run: railway up --service healthcheck --detach
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: 5c3d3fd1-78a0-4fef-ba57-d590b556500b
 
   deploy-vococore:
     name: Deploy → VocoCore
@@ -108,11 +117,12 @@ jobs:
           node-version: '18'
       - name: Install Railway CLI
         run: npm install -g @railway/cli
-      - name: Deploy
+      - name: Deploy VocoCore
         working-directory: vococore
         run: railway up --service vococore --detach
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: 5c3d3fd1-78a0-4fef-ba57-d590b556500b
 
   deploy-kintsugi:
     name: Deploy → Kintsugi
@@ -128,8 +138,9 @@ jobs:
           node-version: '18'
       - name: Install Railway CLI
         run: npm install -g @railway/cli
-      - name: Deploy
+      - name: Deploy Kintsugi
         working-directory: kintsugi-service
         run: railway up --service kintsugi-service --detach
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: 5c3d3fd1-78a0-4fef-ba57-d590b556500b
