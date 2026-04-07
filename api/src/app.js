@@ -47,10 +47,6 @@ app.use(cookieParser());
 const defaultOrigins = [
   'http://localhost:3000',
   'http://localhost:5173',
-  'https://app.vocalysis.cittaa.in',
-  'https://vocalysis-platform-production.up.railway.app',
-  'https://vocalysis.cittaa.in',
-  'https://app.vocalysis.cittaa.in',
   'https://cittaa.in',
   'https://mind.cittaa.in',
   'https://api.mindbridge.cittaa.in',
