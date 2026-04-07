@@ -37,8 +37,17 @@ const ACCESS_TOKEN_EXPIRY_SECONDS = 900;
 const REFRESH_TOKEN_EXPIRY = '7d';
 
 // JWT secrets â consistent with auth.middleware.js
-const JWT_ACCESS_SECRET  = process.env.JWT_ACCESS_SECRET  || process.env.JWT_SECRET  || 'access-secret';
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'refresh-secret';
+// Fail closed: refuse to start if JWT secrets are not explicitly set.
+// Never fall back to a guessable default — a misconfigured deployment
+// should crash at startup rather than silently allow token forgery.
+const JWT_ACCESS_SECRET  = process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET;
+const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
+if (!JWT_ACCESS_SECRET || !JWT_REFRESH_SECRET) {
+  throw new Error(
+    'FATAL: JWT_ACCESS_SECRET and JWT_REFRESH_SECRET env vars must be set. ' +
+    'Refusing to start with hardcoded fallback secrets.'
+  );
+}
 
 /**
  * Helper: validate password complexity
@@ -225,7 +234,7 @@ router.post('/register', requireAuth, async (req, res) => {
     await emailService.sendWelcomeEmail({
       to: email,
       name: firstName,
-      loginUrl: `${process.env.PLATFORM_URL || 'https://striking-bravery-production-c13e.up.railway.app'}/login`,
+      loginUrl: `${process.env.PLATFORM_URL || 'https://app.vocalysis.cittaa.in'}/login`,
       tempPassword: password,
       companyName: tenant?.displayName || tenant?.legalName || 'Vocalysis'
     }).catch(err => logger.error('Welcome email failed', { error: err.message }));
@@ -523,7 +532,7 @@ router.post('/forgot-password', async (req, res) => {
     const resetToken = user.generatePasswordResetToken();
     await user.save();
 
-    const platformUrl = process.env.PLATFORM_URL || 'https://striking-bravery-production-c13e.up.railway.app';
+    const platformUrl = process.env.PLATFORM_URL || 'https://app.vocalysis.cittaa.in';
     const resetUrl = `${platformUrl}/reset-password/${resetToken}`;
     await emailService.sendPasswordReset({
       to: email,
@@ -681,7 +690,7 @@ router.get('/google', requireAuth, (req, res) => {
  * Handles both Google Sign-In (purpose=login) and Calendar Connect (purpose=connect)
  */
 router.get('/google/callback', async (req, res) => {
-  const platformUrl = process.env.PLATFORM_URL || 'https://striking-bravery-production-c13e.up.railway.app';
+  const platformUrl = process.env.PLATFORM_URL || 'https://app.vocalysis.cittaa.in';
   try {
     const { code, state, error: oauthError } = req.query;
 

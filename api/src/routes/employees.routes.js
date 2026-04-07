@@ -712,7 +712,7 @@ router.post('/bulk-json', requireAuth, requireRole(EMP_MANAGE_ROLES), async (req
         emailService.sendWelcomeEmail?.({
           to: email,
           name: newUser.firstName,
-          loginUrl: `${process.env.PLATFORM_URL || 'https://striking-bravery-production-c13e.up.railway.app'}/login`,
+          loginUrl: `${process.env.PLATFORM_URL || 'https://app.vocalysis.cittaa.in'}/login`,
           tempPassword,
           companyName: 'Vocalysis',
         }).catch(() => {});

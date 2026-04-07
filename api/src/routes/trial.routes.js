@@ -16,7 +16,7 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const emailService = require('../services/emailService');
 
 const TRIAL_DAYS = 14;
-const PLATFORM_URL = process.env.PLATFORM_URL || 'https://striking-bravery-production-c13e.up.railway.app';
+const PLATFORM_URL = process.env.PLATFORM_URL || 'https://app.vocalysis.cittaa.in';
 
 /* ── GET /trial/status ─────────────────────────────────────────────────────── */
 router.get('/status', requireAuth, async (req, res) => {

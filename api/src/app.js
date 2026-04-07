@@ -47,7 +47,7 @@ app.use(cookieParser());
 const defaultOrigins = [
   'http://localhost:3000',
   'http://localhost:5173',
-  'https://striking-bravery-production-c13e.up.railway.app',
+  'https://app.vocalysis.cittaa.in',
   'https://vocalysis-platform-production.up.railway.app',
   'https://vocalysis.cittaa.in',
   'https://app.vocalysis.cittaa.in',
@@ -137,16 +137,23 @@ app.use('/outcomes', outcomesRoutes);
 app.use('/notifications', notificationsRoutes);
 
 // ÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂ DEV SEED (temporary ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ creates test users for all roles) ÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂ
+// ── DEV SEED is disabled in production. ─────────────────────────────────────
+// Set NODE_ENV=production in Railway to prevent accidental seeding.
+// In staging/dev, set SEED_SECRET to a strong random value in your env.
+if (process.env.NODE_ENV !== 'production') {
 const _seedRouter = express.Router();
 
-// Allow GET so it can be triggered directly from the browser address bar.
-// GET: /dev/seed?secret=cittaa-seed-2024
-// POST: body { "secret": "cittaa-seed-2024" }
+// GET: /dev/seed?secret=<SEED_SECRET>
+// POST: body { "secret": "<SEED_SECRET>" }
 const _runSeed = async (req, res) => {
   const secret = req.body?.secret || req.query?.secret;
+  const expectedSecret = process.env.SEED_SECRET;
+  if (!expectedSecret) {
+    return res.status(503).json({ error: 'SEED_SECRET env var is not configured' });
+  }
   try {
-    if (secret !== 'cittaa-seed-2024') {
-      return res.status(403).json({ error: 'forbidden – pass ?secret=cittaa-seed-2024' });
+    if (secret !== expectedSecret) {
+      return res.status(403).json({ error: 'forbidden – invalid seed secret' });
     }
 
     const User   = require('./models/User');
@@ -274,6 +281,7 @@ const _runSeed = async (req, res) => {
 _seedRouter.get('/',  _runSeed);
 _seedRouter.post('/', _runSeed);
 app.use('/dev/seed', _seedRouter);
+} // end: NODE_ENV !== 'production' guard for seed endpoint
 
 // ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Scheduling (HR view of upcoming assessments + consultations this week) ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ
 const _schedRouter = express.Router();

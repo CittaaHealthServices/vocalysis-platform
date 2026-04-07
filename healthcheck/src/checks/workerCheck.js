@@ -1,6 +1,11 @@
 const Redis = require('ioredis');
 const logger = require('../logger');
 
+// Key written by the worker every 30 s with a 90 s TTL.
+// If it is absent the worker process is not running (or has been down > 90 s).
+const HEARTBEAT_KEY     = 'worker:heartbeat';
+const HEARTBEAT_MAX_AGE = 90_000; // ms — matches the worker's TTL
+
 module.exports = async function workerCheck() {
   const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
   const redis = new Redis(redisUrl, {
@@ -10,6 +15,16 @@ module.exports = async function workerCheck() {
   });
 
   try {
+    // ── Liveness check: verify the worker is actually running ────────────────
+    const heartbeatRaw = await redis.get(HEARTBEAT_KEY);
+    let workerAlive    = false;
+    let heartbeatAgeMs = null;
+
+    if (heartbeatRaw) {
+      heartbeatAgeMs = Date.now() - parseInt(heartbeatRaw, 10);
+      workerAlive    = heartbeatAgeMs < HEARTBEAT_MAX_AGE;
+    }
+
     // Bull stores queue data in Redis with specific key patterns
     const queueNames = [
       'audio-analysis',
@@ -60,12 +75,25 @@ module.exports = async function workerCheck() {
       }
     }
 
+    // Worker is only healthy if the heartbeat is fresh AND no queue issues
+    let status;
+    if (!workerAlive) {
+      status = 'down';    // heartbeat missing or stale → worker not running
+      logger.warn('Worker heartbeat missing or stale (age: %s ms) — worker may not be running', heartbeatAgeMs);
+    } else if (hasIssue) {
+      status = 'degraded'; // running but queue problems
+    } else {
+      status = 'healthy';
+    }
+
     const result = {
       service: 'worker',
-      status: hasIssue ? 'degraded' : 'healthy',
+      status,
+      workerAlive,
+      heartbeatAgeMs,
       queueStats: stats,
       timestamp: new Date(),
-      uptime: !hasIssue,
+      uptime: workerAlive,
       totalWaiting: Object.values(stats).reduce((sum, q) => sum + (q.waiting || 0), 0),
       totalActive: Object.values(stats).reduce((sum, q) => sum + (q.active || 0), 0),
       totalFailed: Object.values(stats).reduce((sum, q) => sum + (q.failed || 0), 0)

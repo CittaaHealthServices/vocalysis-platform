@@ -131,7 +131,7 @@ router.post('/', requireAuth, requireRole(['CITTAA_SUPER_ADMIN', 'COMPANY_ADMIN'
     emailService.sendWelcomeEmail?.({
       to: email,
       name: firstName,
-      loginUrl: `${process.env.PLATFORM_URL || 'https://striking-bravery-production-c13e.up.railway.app'}/login`,
+      loginUrl: `${process.env.PLATFORM_URL || 'https://app.vocalysis.cittaa.in'}/login`,
       tempPassword,
       companyName: targetTenantId,
     }).catch(() => {});
@@ -229,7 +229,7 @@ router.post('/clinicians', requireAuth, requireRole(['COMPANY_ADMIN', 'CITTAA_SU
     emailService.sendWelcomeEmail?.({
       to: email,
       name: firstName,
-      loginUrl: `${process.env.PLATFORM_URL || 'https://striking-bravery-production-c13e.up.railway.app'}/login`,
+      loginUrl: `${process.env.PLATFORM_URL || 'https://app.vocalysis.cittaa.in'}/login`,
       tempPassword: password,
       companyName: 'Vocalysis',
     }).catch(() => {});

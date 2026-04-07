@@ -47,7 +47,7 @@ const B = {
 
 const FROM_EMAIL   = process.env.RESEND_FROM_EMAIL || 'info@cittaa.in';
 const BRAND_NAME   = 'Cittaa Health';
-const PLATFORM_URL = process.env.PLATFORM_URL || 'https://striking-bravery-production-c13e.up.railway.app';
+const PLATFORM_URL = process.env.PLATFORM_URL || 'https://app.vocalysis.cittaa.in';
 const IST          = 'Asia/Kolkata';
 
 function toISTDate(d)  { return new Date(d).toLocaleDateString ('en-IN', { timeZone: IST, day:'2-digit', month:'short', year:'numeric' }); }

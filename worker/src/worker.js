@@ -203,6 +203,35 @@ async function initializeWorker() {
     logger.info('Vocalysis Worker Service v2.0 initialized successfully');
     logger.info('Worker is running and ready to process jobs');
 
+    // ── Worker liveness heartbeat ────────────────────────────────────────────
+    // Write a Redis key every 30 s with a 90 s TTL so the healthcheck service
+    // can confirm the worker process is actually alive (not just that queues
+    // happen to be empty).
+    const Redis = require('ioredis');
+    const _heartbeatRedis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
+      maxRetriesPerRequest: 3,
+      enableReadyCheck: false,
+    });
+    const _HEARTBEAT_KEY = 'worker:heartbeat';
+    const _HEARTBEAT_TTL = 90; // seconds
+
+    async function _writeHeartbeat() {
+      try {
+        await _heartbeatRedis.set(_HEARTBEAT_KEY, Date.now().toString(), 'EX', _HEARTBEAT_TTL);
+      } catch (err) {
+        logger.warn('Failed to write worker heartbeat: %s', err.message);
+      }
+    }
+    _writeHeartbeat(); // immediate write on startup
+    const _heartbeatInterval = setInterval(_writeHeartbeat, 30_000);
+
+    // Clean up heartbeat on graceful shutdown
+    process.once('SIGTERM_heartbeat_cleanup', () => {
+      clearInterval(_heartbeatInterval);
+      _heartbeatRedis.disconnect();
+    });
+    // ────────────────────────────────────────────────────────────────────────
+
     // Graceful shutdown
     process.on('SIGTERM', async () => {
       logger.info('SIGTERM received, shutting down gracefully');

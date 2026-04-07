@@ -15,7 +15,12 @@ const verifyAccessToken = (req, res, next) => {
     }
 
     const token = authHeader.substring(7);
-    const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET || 'access-secret');
+    const jwtAccessSecret = process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET;
+    if (!jwtAccessSecret) {
+      logger.error('FATAL: JWT_ACCESS_SECRET env var is not set — rejecting all token verifications');
+      return res.status(500).json({ success: false, message: 'Server configuration error', code: 'CONFIG_ERROR' });
+    }
+    const decoded = jwt.verify(token, jwtAccessSecret);
 
     req.user = {
       userId: decoded.userId,
@@ -75,7 +80,12 @@ const verifyRefreshToken = (req, res, next) => {
       });
     }
 
-    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET || 'refresh-secret');
+    const jwtRefreshSecret = process.env.JWT_REFRESH_SECRET;
+    if (!jwtRefreshSecret) {
+      logger.error('FATAL: JWT_REFRESH_SECRET env var is not set');
+      return res.status(500).json({ success: false, message: 'Server configuration error', code: 'CONFIG_ERROR' });
+    }
+    const decoded = jwt.verify(refreshToken, jwtRefreshSecret);
 
     req.refreshTokenData = {
       userId: decoded.userId,
